@@ -86,7 +86,13 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
    WORKSPACE & PANELS
 ═══════════════════════════════════ */
 .main-layout{flex:1;display:grid;grid-template-columns:1fr 350px;gap:10px;padding:10px 0;min-height:0;position:relative;}
-@media(max-width:780px){.main-layout{grid-template-columns:1fr;grid-template-rows:1fr 1fr;}}
+
+/* אופטימיזציה לניידים - סידור גבהים למסך קטן */
+@media(max-width:780px){
+  .main-layout{display:flex; flex-direction:column; gap:15px;}
+  .main-layout > .panel:first-child { min-height: 55vh; } /* מבטיח שיהיה מקום לצ'אט */
+  .main-layout > .panel:last-child { min-height: 250px; }
+}
 
 .panel{background:var(--panel);border:1px solid var(--line2);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;min-height:0;position:relative;}
 .panel-head{display:flex;align-items:center;justify-content:space-between;padding:0 14px;height:38px;border-bottom:1px solid var(--line2);background:rgba(0,0,0,0.25);flex-shrink:0;}
@@ -133,7 +139,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
 
 /* Chat UI */
 .chat-pane{flex:1;min-height:0;display:flex;flex-direction:column}
-.chat-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;}
+.chat-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;min-height:200px;} /* מבטיח שהאזור לא יקרוס בנייד */
 .msg{display:flex;flex-direction:column;max-width:85%;gap:3px}
 .msg.me{align-self:flex-start} .msg.them{align-self:flex-end}
 .msg-bubble{padding:9px 13px;border-radius:4px;font-size:0.9rem;line-height:1.4;}
@@ -141,7 +147,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
 .msg.them .msg-bubble{background:var(--card);border:1px solid var(--line);color:var(--green)}
 .msg-time{font-family:var(--mono);font-size:0.6rem;color:var(--t3);display:flex;align-items:center;gap:4px;}
 .chat-input-row{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line2);background:rgba(0,0,0,0.2);}
-.chat-textarea{flex:1;background:var(--deep);border:1px solid var(--line);border-radius:var(--r);color:var(--t1);font-family:var(--ui);font-size:0.9rem;padding:10px 13px;resize:none;outline:none;max-height:90px;direction:rtl;}
+
+/* 🟢 תיקון כירורגי לתיבת הטקסט (טלפונים) - גובה התחלתי מתאים למספר שורות */
+.chat-textarea{flex:1;background:var(--deep);border:1px solid var(--line);border-radius:var(--r);color:var(--t1);font-family:var(--ui);font-size:0.9rem;padding:10px 13px;resize:none;outline:none;min-height:70px;max-height:120px;direction:rtl;}
 .btn-send-chat{width:42px;height:42px;background:rgba(0,212,255,0.08);border:1px solid var(--line2);border-radius:var(--r);color:var(--cyan);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1rem;}
 .btn-send-chat:hover:not(:disabled){background:rgba(0,212,255,0.18);border-color:var(--cyan2);}
 
@@ -199,6 +207,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
       <span class="room-field-label">מזהה חדר (ID)</span>
       <input id="room-input" class="room-input" type="text" placeholder="הזן מזהה מנהרה..." maxlength="32" autocomplete="off" spellcheck="false"/>
     </div>
+    <div class="room-field">
+      <span class="room-field-label">מפתח אבטחה (PSK)</span>
+      <input id="psk-input" class="room-input" type="password" placeholder="הזן מפתח חסוי..." maxlength="32" autocomplete="off" spellcheck="false"/>
+    </div>
     <div class="room-btns">
       <button class="btn btn-ghost" onclick="UI.generateRoom()">⟳ חולל מזהה</button>
       <button class="btn btn-primary" id="btn-connect" onclick="UI.handleConnect()"><span id="btn-connect-text">⬡ הקם מנהרה</span></button>
@@ -212,7 +224,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
       <div class="lock-overlay" id="lock-overlay">
         <div class="lock-icon">🔒</div>
         <div class="lock-title">המערכת נעולה בהמתנה</div>
-        <div class="lock-sub">המנהרה תאובטח ותיפתח אוטומטית כאשר המכשיר השני יתחבר לאותו חדר וישלים החלפת מפתחות.</div>
+        <div class="lock-sub">המנהרה תאובטח ותיפתח אוטומטית כאשר המכשיר השני יתחבר לאותו חדר עם אותו מפתח אבטחה בדיוק.</div>
       </div>
 
       <div class="tabs-bar">
@@ -255,7 +267,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
           <div style="text-align:center;padding:10px;font-size:0.7rem;color:var(--t3);border-bottom:1px solid var(--line2);">🔒 ערוץ מוצפן קצה-לקצה · אפס רישומים נשמרים</div>
           <div class="chat-msgs" id="chat-msgs"></div>
           <div class="chat-input-row">
-            <textarea id="chat-input" class="chat-textarea" rows="1" placeholder="הקלד הודעה מוצפנת..." onkeydown="UI.chatKey(event)"></textarea>
+            <textarea id="chat-input" class="chat-textarea" placeholder="הקלד הודעה מוצפנת..." onkeydown="UI.chatKey(event)"></textarea>
             <button id="btn-chat-send" class="btn-send-chat" disabled onclick="ZDT.triggerChat()">➤</button>
           </div>
         </div>
@@ -272,7 +284,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
   </div>
 
   <div class="stats-bar">
-    <div class="enc-tag">SECURE: AES-GCM + ECDH P-256 + SRTP</div>
+    <div class="enc-tag">SECURE: AES-GCM + ECDH P-256 + PSK Auth</div>
     <div class="util-row">
       <div>TX: <span style="color:var(--t2)" id="stat-sent">0 B</span></div>
       <div>RX: <span style="color:var(--t2)" id="stat-recv">0 B</span></div>
@@ -337,7 +349,6 @@ const UI = {
     document.getElementById('lock-overlay').classList.toggle('hidden', !locked);
     document.getElementById('btn-chat-send').disabled = locked;
     
-    // ניהול תצוגת כפתור השיחה
     if (locked) {
       document.getElementById('btn-voice').classList.add('hidden');
     } else {
@@ -355,9 +366,13 @@ const UI = {
 
   handleConnect() {
     const rid = document.getElementById('room-input').value.trim().toUpperCase();
-    if (!rid) return;
+    const psk = document.getElementById('psk-input').value.trim();
+    if (!rid || !psk) {
+        alert("שגיאה מבצעית: חובה להזין מזהה חדר ומפתח אבטחה (PSK).");
+        return;
+    }
     this.setConnState('connecting');
-    ZDT.connect(rid);
+    ZDT.connect(rid, psk);
   },
 
   handleDisconnect() { ZDT.disconnect(); this.setConnState('offline'); this.setLocked(true); document.getElementById('peer-count-val').textContent='0/2'; },
@@ -429,15 +444,15 @@ const UI = {
 };
 
 const ZDT = {
-  socket: null, pc: null, dc: null, roomId: '',
+  socket: null, pc: null, dc: null, roomId: '', psk: '',
   localDH: null, sharedKey: null, secure: false,
   isInitiator: false, joinTime: 0, rxMeta: null, rxChunks: [], rxReceived: 0,
   
-  // Voice engine properties
   localStream: null, voiceActive: false,
 
-  connect(roomId) {
+  connect(roomId, pskInput) {
     this.roomId = roomId;
+    this.psk = pskInput;
     if (this.socket) this.socket.disconnect();
     this.socket = io(SIGNAL_URL, { transports:['websocket'] });
 
@@ -494,7 +509,6 @@ const ZDT = {
     
     this.secure = false; this.isInitiator = false; this.voiceActive = false;
     
-    // איפוס כפתור שיחה
     const btn = document.getElementById('btn-voice');
     if(btn) {
        btn.innerHTML = '📞 הפעל קשר קולי';
@@ -508,7 +522,6 @@ const ZDT = {
     this.pc.onicecandidate = ({ candidate }) => { if (candidate) this.socket.emit('message', this.roomId, candidate.toJSON()); };
     this.pc.ondatachannel = ({ channel }) => { this._attachDC(channel); };
     
-    // מאזין לאודיו שנכנס מהצד השני
     this.pc.ontrack = ({ streams }) => {
       document.getElementById('remote-audio').srcObject = streams[0];
       LOG.add('ok', 'VOICE', 'ערוץ שמע (SRTP) התקבל מהעמית');
@@ -541,11 +554,19 @@ const ZDT = {
     const remotePub = await crypto.subtle.importKey('jwk', remotePubJwk, { name:'ECDH', namedCurve:'P-256' }, false, []);
     const bits = await crypto.subtle.deriveBits({ name:'ECDH', public:remotePub }, this.localDH.privateKey, 256);
     const raw = await crypto.subtle.digest('SHA-256', bits);
-    this.sharedKey = await crypto.subtle.importKey('raw', raw, { name:'AES-GCM' }, false, ['encrypt','decrypt']);
+
+    // 🟢 הזרקת ה-PSK: שילוב סיסמת המשתמש לתוך מפתח ה-ECDH (XOR)
+    const pskHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(this.psk));
+    const pskArr = new Uint8Array(pskHash);
+    const ecdhArr = new Uint8Array(raw);
+    const combined = new Uint8Array(32);
+    for(let i=0; i<32; i++) combined[i] = ecdhArr[i] ^ pskArr[i]; // Cryptographic Binding
+
+    this.sharedKey = await crypto.subtle.importKey('raw', combined, { name:'AES-GCM' }, false, ['encrypt','decrypt']);
     this.secure = true;
-    LOG.add('ok','SEC','AES-256-GCM Key Locked');
+    LOG.add('ok','SEC','AES-256-GCM + PSK Bound Successfully');
     UI.setConnState('secure'); UI.setLocked(false);
-    setTimeout(() => UI._refreshSendBtn(), 500); // רענון ממשק עזר
+    setTimeout(() => UI._refreshSendBtn(), 500);
   },
 
   async _handleIncoming(data) {
@@ -554,8 +575,10 @@ const ZDT = {
       if (msg.type === 'dh') { await this._handleDHPub(msg.pub); return; }
       if (msg.type === 'meta') { this.rxMeta = msg; this.rxChunks = []; this.rxReceived = 0; return; }
       if (msg.type === 'chat') { 
-        const plain = await crypto.subtle.decrypt({ name:'AES-GCM', iv:new Uint8Array(msg.iv) }, this.sharedKey, new Uint8Array(msg.enc));
-        UI.appendMsg(new TextDecoder().decode(plain), 'them');
+        try {
+          const plain = await crypto.subtle.decrypt({ name:'AES-GCM', iv:new Uint8Array(msg.iv) }, this.sharedKey, new Uint8Array(msg.enc));
+          UI.appendMsg(new TextDecoder().decode(plain), 'them');
+        } catch(e) { LOG.add('err','SEC','Auth Failed: Wrong PSK Blocked Message'); }
         return; 
       }
       return;
@@ -571,7 +594,7 @@ const ZDT = {
       try {
         const plain = await crypto.subtle.decrypt({ name:'AES-GCM', iv:new Uint8Array(this.rxMeta.iv) }, this.sharedKey, merged);
         UI.offerDownload(this.rxMeta.name, plain);
-      } catch(e) { LOG.add('err','SEC','Decryption failed'); }
+      } catch(e) { LOG.add('err','SEC','Decryption failed: PSK Mismatch'); }
       this.rxMeta=null; this.rxChunks=[]; this.rxReceived=0; UI.hideTxProg();
     }
   },
@@ -615,7 +638,6 @@ const ZDT = {
     this.dc.send(JSON.stringify({ type:'chat', enc:Array.from(new Uint8Array(enc)), iv:Array.from(iv) }));
   },
 
-  // פונקציית הקשר הקולי החדשה
   async toggleVoice() {
     if (!this.secure) return;
     const btn = document.getElementById('btn-voice');
@@ -627,7 +649,6 @@ const ZDT = {
         this.localStream.getTracks().forEach(t => this.pc.addTrack(t, this.localStream));
         LOG.add('ok', 'VOICE', 'מיקרופון מחובר. מזרים נתונים...');
         
-        // יצירת הצעת רשת חדשה כדי להוסיף את ערוץ השמע
         const offer = await this.pc.createOffer();
         await this.pc.setLocalDescription(offer);
         this.socket.emit('message', this.roomId, offer);
