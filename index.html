@@ -163,6 +163,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
 <body>
 
 <div class="grid-bg"></div>
+
+<audio id="remote-audio" autoplay></audio>
+
 <div class="app">
 
   <header>
@@ -179,7 +182,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
         <div class="logo-tagline">Zero-Trust Direct Transfer</div>
       </div>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;">
+    <div style="display:flex;gap:12px;align-items:center;">
+      
+      <button id="btn-voice" class="btn btn-ghost hidden" onclick="ZDT.toggleVoice()" style="min-height:36px; padding:0 12px; font-size:0.75rem; border-color:var(--cyan); color:var(--cyan);">📞 הפעל קשר קולי</button>
+      
       <div class="peer-count">עמיתים: <span class="pc-val" id="peer-count-val">0/2</span></div>
       <div class="conn-pill" id="conn-pill">
         <div class="conn-dot" id="conn-dot"></div>
@@ -266,7 +272,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
   </div>
 
   <div class="stats-bar">
-    <div class="enc-tag">SECURE: AES-GCM + ECDH P-256</div>
+    <div class="enc-tag">SECURE: AES-GCM + ECDH P-256 + SRTP</div>
     <div class="util-row">
       <div>TX: <span style="color:var(--t2)" id="stat-sent">0 B</span></div>
       <div>RX: <span style="color:var(--t2)" id="stat-recv">0 B</span></div>
@@ -280,7 +286,15 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
 // ────────────────────────────────────────────────────────
 const SIGNAL_URL  = 'https://zdt-signaling.onrender.com';
 const CHUNK_SIZE  = 16 * 1024; // 16 KB
-const ICE_SERVERS = { iceServers:[{urls:'stun:stun.l.google.com:19302'}] };
+const ICE_SERVERS = { 
+  iceServers:[
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' }
+  ] 
+};
 
 const LOG = {
   add(level, cat, msg) {
@@ -322,6 +336,14 @@ const UI = {
   setLocked(locked) {
     document.getElementById('lock-overlay').classList.toggle('hidden', !locked);
     document.getElementById('btn-chat-send').disabled = locked;
+    
+    // ניהול תצוגת כפתור השיחה
+    if (locked) {
+      document.getElementById('btn-voice').classList.add('hidden');
+    } else {
+      document.getElementById('btn-voice').classList.remove('hidden');
+    }
+    
     this._refreshSendBtn();
   },
 
@@ -410,6 +432,9 @@ const ZDT = {
   socket: null, pc: null, dc: null, roomId: '',
   localDH: null, sharedKey: null, secure: false,
   isInitiator: false, joinTime: 0, rxMeta: null, rxChunks: [], rxReceived: 0,
+  
+  // Voice engine properties
+  localStream: null, voiceActive: false,
 
   connect(roomId) {
     this.roomId = roomId;
@@ -422,14 +447,13 @@ const ZDT = {
       LOG.add('ok','ROOM',`נכנס לחדר, ממתין לעמית...`);
       UI.setConnState('connected');
       document.getElementById('peer-count-val').textContent='1/2';
-      this.joinTime = Date.now(); // תיעוד זמן הכניסה לחדר
+      this.joinTime = Date.now(); 
     });
 
     this.socket.on('ready', async () => {
       document.getElementById('peer-count-val').textContent='2/2';
       const waited = Date.now() - this.joinTime;
       
-      // אלגוריתם "המארח והאורח" - פותר את התנגשות ה-SDP
       if (waited > 200) {
         LOG.add('info','P2P',`הוגדר כיוזם (Host). מתחיל מנהרה...`);
         this.isInitiator = true;
@@ -445,13 +469,13 @@ const ZDT = {
       if (!this.pc) await this._setupPeer();
       try {
         if (msg.type === 'offer') {
-          LOG.add('info','RTC','OFFER Received - Responding...');
+          LOG.add('info','RTC','בקשת רשת התקבלה - מגיב...');
           await this.pc.setRemoteDescription(new RTCSessionDescription(msg));
           const ans = await this.pc.createAnswer();
           await this.pc.setLocalDescription(ans);
           this.socket.emit('message', this.roomId, ans);
         } else if (msg.type === 'answer') {
-          LOG.add('info','RTC','ANSWER Received - Finalizing...');
+          LOG.add('info','RTC','תשובת רשת התקבלה - מסנכרן...');
           await this.pc.setRemoteDescription(new RTCSessionDescription(msg));
         } else if (msg.candidate) {
           await this.pc.addIceCandidate(new RTCIceCandidate(msg));
@@ -463,16 +487,32 @@ const ZDT = {
   },
 
   disconnect() {
+    if (this.localStream) { this.localStream.getTracks().forEach(t=>t.stop()); this.localStream = null; }
     if (this.dc) { this.dc.close(); this.dc = null; }
     if (this.pc) { this.pc.close(); this.pc = null; }
     if (this.socket) { this.socket.disconnect(); this.socket = null; }
-    this.secure = false; this.isInitiator = false;
+    
+    this.secure = false; this.isInitiator = false; this.voiceActive = false;
+    
+    // איפוס כפתור שיחה
+    const btn = document.getElementById('btn-voice');
+    if(btn) {
+       btn.innerHTML = '📞 הפעל קשר קולי';
+       btn.style.borderColor = 'var(--cyan)';
+       btn.style.color = 'var(--cyan)';
+    }
   },
 
   async _setupPeer() {
     this.pc = new RTCPeerConnection(ICE_SERVERS);
     this.pc.onicecandidate = ({ candidate }) => { if (candidate) this.socket.emit('message', this.roomId, candidate.toJSON()); };
     this.pc.ondatachannel = ({ channel }) => { this._attachDC(channel); };
+    
+    // מאזין לאודיו שנכנס מהצד השני
+    this.pc.ontrack = ({ streams }) => {
+      document.getElementById('remote-audio').srcObject = streams[0];
+      LOG.add('ok', 'VOICE', 'ערוץ שמע (SRTP) התקבל מהעמית');
+    };
     
     LOG.add('crypto','SEC','Generating ECDH Keys...');
     this.localDH = await crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveKey','deriveBits']);
@@ -505,6 +545,7 @@ const ZDT = {
     this.secure = true;
     LOG.add('ok','SEC','AES-256-GCM Key Locked');
     UI.setConnState('secure'); UI.setLocked(false);
+    setTimeout(() => UI._refreshSendBtn(), 500); // רענון ממשק עזר
   },
 
   async _handleIncoming(data) {
@@ -572,6 +613,42 @@ const ZDT = {
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const enc = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, this.sharedKey, new TextEncoder().encode(txt));
     this.dc.send(JSON.stringify({ type:'chat', enc:Array.from(new Uint8Array(enc)), iv:Array.from(iv) }));
+  },
+
+  // פונקציית הקשר הקולי החדשה
+  async toggleVoice() {
+    if (!this.secure) return;
+    const btn = document.getElementById('btn-voice');
+    
+    if (!this.voiceActive) {
+      try {
+        LOG.add('info', 'VOICE', 'מבקש גישה למיקרופון...');
+        this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        this.localStream.getTracks().forEach(t => this.pc.addTrack(t, this.localStream));
+        LOG.add('ok', 'VOICE', 'מיקרופון מחובר. מזרים נתונים...');
+        
+        // יצירת הצעת רשת חדשה כדי להוסיף את ערוץ השמע
+        const offer = await this.pc.createOffer();
+        await this.pc.setLocalDescription(offer);
+        this.socket.emit('message', this.roomId, offer);
+        
+        this.voiceActive = true;
+        btn.innerHTML = '🔴 נתק קשר קולי';
+        btn.style.borderColor = 'var(--red)';
+        btn.style.color = 'var(--red)';
+      } catch(e) {
+        LOG.add('err', 'VOICE', 'גישה למיקרופון נדחתה או נכשלה');
+      }
+    } else {
+      if (this.localStream) {
+        this.localStream.getTracks().forEach(t => t.stop());
+      }
+      this.voiceActive = false;
+      btn.innerHTML = '📞 הפעל קשר קולי';
+      btn.style.borderColor = 'var(--cyan)';
+      btn.style.color = 'var(--cyan)';
+      LOG.add('warn', 'VOICE', 'קשר קולי נותק מקומית');
+    }
   }
 };
 
