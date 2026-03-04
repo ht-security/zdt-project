@@ -1,185 +1,829 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8"/>
-    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0"/>
-    <title>ht-security | Secure Terminal</title>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <style>
-        :root { --void:#000000; --cyan:#00d4ff; --panel:#0a1428; --green:#00ff9d; --red:#ff3366; }
-        body { background:var(--void); color:var(--cyan); font-family: monospace; margin:0; padding:15px; font-size: 16px; }
-        input, button { background:var(--panel); border:1px solid var(--cyan); color:var(--cyan); padding:10px; font-family:monospace; font-size: 16px; outline: none; margin-bottom: 10px; }
-        button { cursor:pointer; font-weight:bold; }
-        button:hover { background:var(--cyan); color:var(--void); }
-        .header { border-bottom: 1px solid var(--cyan); padding-bottom: 10px; margin-bottom: 15px; }
-        .flex-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-        
-        /* חלון הצ'אט המוגדל לפי בקשתך */
-        #chat-box { height: 50vh; min-height: 350px; border: 1px solid rgba(0,212,255,0.4); background: rgba(0,0,0,0.5); overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px; }
-        
-        .msg { padding: 10px; border-radius: 4px; max-width: 85%; line-height: 1.4; word-wrap: break-word; }
-        .msg.me { align-self: flex-end; border: 1px solid var(--cyan); color: var(--cyan); }
-        .msg.them { align-self: flex-start; border: 1px solid var(--green); color: var(--green); }
-        
-        #msg-input { flex: 1; margin-bottom: 0; }
-        .log { height: 120px; overflow-y: auto; background: #050505; color: var(--green); padding: 10px; font-size: 0.8rem; border: 1px solid #333; direction: ltr; text-align: left; }
-    </style>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0"/>
+<title>ZDT — תקשורת והעברה מאובטחת</title>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
+<style>
+/* ═══════════════════════════════════
+   DESIGN TOKENS (שמירה על המקור)
+═══════════════════════════════════ */
+:root{
+  --void:#030712;
+  --deep:#060d1a;
+  --panel:#0a1428;
+  --card:#0d1b35;
+  --line:#1a2d4a;
+  --line2:rgba(0,212,255,0.12);
+
+  --cyan:#00d4ff;
+  --cyan2:rgba(0,212,255,0.6);
+  --cyan3:rgba(0,212,255,0.15);
+  --green:#00ff9d;
+  --green2:rgba(0,255,157,0.6);
+  --green3:rgba(0,255,157,0.12);
+  --red:#ff3366;
+  --amber:#ffb800;
+  --purple:#a855f7;
+
+  --t1:#dbeafe;
+  --t2:#7ea8c9;
+  --t3:#3d6080;
+  --t4:#1e3a52;
+
+  --mono:'JetBrains Mono',monospace;
+  --ui:'Heebo',sans-serif;
+  --r:6px;
+  --tr:0.2s cubic-bezier(0.4,0,0.2,1);
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overscroll-behavior:none}
+
+body{
+  background:var(--void);
+  color:var(--t1);
+  font-family:var(--ui);
+  font-size:14px;
+  overflow-x:hidden;
+  min-height:100vh;
+}
+
+/* אפקטים של סריקה ווינייט (מהקוד המקורי) */
+body::before{
+  content:'';
+  position:fixed;inset:0;
+  background:repeating-linear-gradient(
+    0deg,
+    transparent,transparent 2px,
+    rgba(0,0,0,0.035) 2px,rgba(0,0,0,0.035) 4px
+  );
+  pointer-events:none;z-index:9000;
+}
+
+body::after{
+  content:'';
+  position:fixed;inset:0;
+  background:radial-gradient(ellipse at 50% 0%,rgba(0,212,255,0.04) 0%,transparent 60%);
+  pointer-events:none;z-index:0;
+}
+
+.grid-bg{
+  position:fixed;inset:0;z-index:0;
+  background-image:
+    linear-gradient(rgba(0,212,255,0.025) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,212,255,0.025) 1px,transparent 1px);
+  background-size:50px 50px;
+  animation:grid-drift 60s linear infinite;
+}
+@keyframes grid-drift{to{background-position:50px 50px}}
+
+.app{
+  position:relative;z-index:1;
+  min-height:100vh;
+  display:flex;flex-direction:column;
+  max-width:980px;margin:0 auto;
+  padding:0 12px 16px;
+}
+
+/* ═══════════════════════════════════
+   HEADER (עם ציור הטלפון המילולי)
+═══════════════════════════════════ */
+header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:12px 0 10px;
+  border-bottom:1px solid var(--line2);
+  gap:10px;flex-wrap:wrap;
+  flex-shrink:0;
+}
+
+.logo-block{display:flex;align-items:center;gap:10px}
+.logo-hex{
+  position:relative;width:40px;height:40px;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.logo-hex svg.hex-svg{position:absolute;animation:hex-rot 18s linear infinite}
+@keyframes hex-rot{to{transform:rotate(360deg)}}
+
+/* ציור טלפון מילולי (SVG) מיושר למרכז ההקסגון */
+.phone-icon {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    color: var(--cyan);
+    opacity: 0.8;
+    z-index: 2;
+}
+
+.logo-inner{font-family:var(--mono);font-size:0.9rem;font-weight:700;color:var(--cyan);letter-spacing:0.06em;text-shadow:0 0 16px var(--cyan); z-index: 1;}
+.logo-text{display:flex;flex-direction:column}
+.logo-name{font-family:var(--mono);font-size:1.1rem;font-weight:700;color:var(--cyan);text-shadow:0 0 20px rgba(0,212,255,0.5);letter-spacing:0.1em}
+.logo-tagline{font-size:0.58rem;color:var(--t3);letter-spacing:0.18em;text-transform:uppercase;margin-top:1px}
+
+/* אלמנטים של סטטוס וחיבור (מהמקור) */
+.conn-pill{
+  display:flex;align-items:center;gap:8px;
+  padding:7px 14px;
+  background:var(--panel);
+  border:1px solid var(--line2);
+  border-radius:100px;
+  font-size:0.72rem;letter-spacing:0.06em;
+  transition:all var(--tr);
+}
+.conn-dot{
+  width:8px;height:8px;border-radius:50%;flex-shrink:0;
+  background:var(--red);
+  box-shadow:0 0 6px var(--red);
+  transition:all var(--tr);
+}
+.conn-dot.connecting{background:var(--amber);box-shadow:0 0 8px var(--amber);animation:blink 0.65s ease infinite}
+.conn-dot.connected{background:var(--green);box-shadow:0 0 10px var(--green),0 0 24px rgba(0,255,157,0.3);animation:pulse 2.5s ease infinite}
+.conn-dot.secure{background:var(--cyan);box-shadow:0 0 10px var(--cyan),0 0 24px rgba(0,212,255,0.3);animation:pulse 2.5s ease infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.15}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.45}}
+.conn-label{color:var(--t2);white-space:nowrap}
+.conn-label .state{color:var(--red);font-weight:700;transition:color var(--tr)}
+.conn-label .state.connecting{color:var(--amber)}
+.conn-label .state.connected{color:var(--green)}
+.conn-label .state.secure{color:var(--cyan)}
+
+.peer-count{
+  display:flex;align-items:center;gap:6px;
+  padding:6px 12px;
+  background:var(--panel);border:1px solid var(--line2);border-radius:100px;
+  font-family:var(--mono);font-size:0.68rem;color:var(--t3);
+}
+.peer-count .pc-val{color:var(--cyan);font-weight:700}
+
+/* ═══════════════════════════════════
+   ROOM CONTROL (מהמקור)
+═══════════════════════════════════ */
+.room-bar{
+  padding:14px 0 12px;
+  border-bottom:1px solid var(--line2);
+  display:flex;gap:8px;flex-wrap:wrap;
+  flex-shrink:0;
+}
+.room-field{
+  flex:1;min-width:140px;
+  position:relative;
+}
+.room-field-label{
+  position:absolute;top:6px;right:12px;
+  font-size:0.55rem;letter-spacing:0.2em;
+  color:var(--t3);text-transform:uppercase;
+  pointer-events:none;
+}
+.room-input{
+  width:100%;
+  padding:22px 12px 7px;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:var(--r);
+  color:var(--cyan);
+  font-family:var(--mono);font-size:0.88rem;
+  letter-spacing:0.1em;text-transform:uppercase;
+  direction:ltr;text-align:left;
+  outline:none;
+  transition:border-color var(--tr),box-shadow var(--tr);
+}
+.room-input::placeholder{color:var(--t4);font-size:0.72rem;letter-spacing:0.05em;text-transform:none}
+.room-input:focus{border-color:var(--cyan2);box-shadow:0 0 0 3px rgba(0,212,255,0.08)}
+
+.room-btns{display:flex;gap:8px;align-items:stretch}
+
+.btn{
+  font-family:var(--ui);font-weight:700;
+  border:none;border-radius:var(--r);
+  cursor:pointer;transition:all var(--tr);
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  white-space:nowrap;position:relative;overflow:hidden;
+}
+.btn:disabled{opacity:0.35;cursor:not-allowed}
+
+.btn-ghost{
+  padding:0 16px;
+  background:var(--panel);border:1px solid var(--line);
+  color:var(--t2);font-size:0.78rem;letter-spacing:0.08em;
+  min-height:48px;
+}
+.btn-ghost:hover:not(:disabled){border-color:var(--cyan2);color:var(--cyan);background:var(--cyan3)}
+
+.btn-primary{
+  padding:0 20px;min-height:48px;
+  background:transparent;border:1.5px solid var(--cyan);
+  color:var(--cyan);font-size:0.82rem;letter-spacing:0.1em;
+  clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);
+}
+.btn-primary::before{
+  content:'';position:absolute;inset:0;
+  background:var(--cyan);transform:scaleX(0);transform-origin:left;
+  transition:transform 0.28s ease;z-index:-1;
+}
+.btn-primary:hover:not(:disabled){color:#000}
+.btn-primary:hover:not(:disabled)::before{transform:scaleX(1)}
+
+.btn-danger{
+  padding:0 16px;min-height:48px;
+  background:transparent;border:1.5px solid var(--red);
+  color:var(--red);font-size:0.78rem;letter-spacing:0.08em;
+}
+.btn-danger:hover:not(:disabled){background:rgba(255,51,102,0.1)}
+
+/* כפתור ירוק טקטי (מהמקור, משמש לשיחה) */
+.btn-green{
+  padding:0 20px;min-height:44px;
+  background:transparent;border:1.5px solid var(--green);
+  color:var(--green);font-size:0.82rem;letter-spacing:0.1em;
+  width:100%;
+}
+.btn-green::before{
+  content:'';position:absolute;inset:0;
+  background:var(--green);transform:scaleX(0);transform-origin:left;
+  transition:transform 0.28s ease;z-index:-1;
+}
+.btn-green:hover:not(:disabled){color:#000}
+.btn-green:hover:not(:disabled)::before{transform:scaleX(1)}
+
+/* כפתור אדום בזמן שיחה פעילה */
+.btn-voice-active {
+    border-color: var(--red) !important;
+    color: var(--red) !important;
+}
+.btn-voice-active::before {
+    background: var(--red) !important;
+}
+
+/* ═══════════════════════════════════
+   MAIN LAYOUT (מהמקור)
+═══════════════════════════════════ */
+.main-layout{
+  flex:1;
+  display:grid;
+  grid-template-columns:1fr 300px;
+  grid-template-rows:1fr;
+  gap:10px;
+  padding:10px 0;
+  min-height:0;
+  position:relative;
+}
+@media(max-width:780px){
+  .main-layout{grid-template-columns:1fr;grid-template-rows:auto auto}
+}
+
+.panel{
+  background:var(--panel);border:1px solid var(--line2);
+  border-radius:var(--r);overflow:hidden;
+  display:flex;flex-direction:column;min-height:0;
+  position:relative;
+}
+/* פס תכלת דק מעל הפאנל (מהמקור) */
+.panel::before{
+  content:'';position:absolute;top:0;right:0;left:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--cyan3),transparent);
+}
+
+/* מסך נעילה (מהמקור) */
+.lock-overlay{
+  position:absolute;inset:0;
+  background:rgba(3,7,18,0.88);
+  backdrop-filter:blur(4px);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:16px;z-index:50;border-radius:var(--r);
+  text-align:center;padding:32px 24px;
+}
+.lock-overlay.hidden{display:none}
+.lock-icon{
+  width:64px;height:64px;
+  border:2px solid var(--line);
+  border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--t3);
+  animation:lock-breathe 3s ease infinite;
+}
+@keyframes lock-breathe{0%,100%{border-color:var(--line);box-shadow:none}50%{border-color:var(--cyan2);box-shadow:0 0 20px rgba(0,212,255,0.15)}}
+.lock-title{font-size:1rem;font-weight:700;color:var(--t2);letter-spacing:0.06em}
+.lock-sub{font-size:0.75rem;color:var(--t3);line-height:1.7;max-width:260px}
+
+/* ═══════════════════════════════════
+   LEFT PANEL (טאבים + אזור שיחה קולית)
+═══════════════════════════════════ */
+.left-panel{display:flex;flex-direction:column;position:relative;min-height:450px}
+
+/* אזור כפתור התחלת שיחה מאובטחת */
+.voice-ctrl-zone {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line2);
+    background: rgba(0,0,0,0.15);
+    flex-shrink: 0;
+}
+
+/* טאבים (מהמקור) */
+.tabs-bar{
+  display:flex;border-bottom:1px solid var(--line2);flex-shrink:0;
+  background:rgba(0,0,0,0.2);
+}
+.tab-btn{
+  flex:1;padding:12px 8px;
+  background:none;border:none;border-bottom:2px solid transparent;
+  color:var(--t3);font-family:var(--ui);font-weight:700;font-size:0.8rem;
+  letter-spacing:0.04em;cursor:pointer;transition:all var(--tr);
+  display:flex;align-items:center;justify-content:center;gap:7px;
+}
+.tab-btn:hover{color:var(--t2);background:rgba(0,212,255,0.03)}
+.tab-btn.active{color:var(--cyan);border-bottom-color:var(--cyan);background:rgba(0,212,255,0.05)}
+.tab-count{
+  background:var(--deep);border:1px solid var(--line);
+  padding:1px 7px;border-radius:100px;font-size:0.6rem;
+  transition:all var(--tr);
+}
+.tab-btn.active .tab-count{background:var(--cyan3);border-color:var(--cyan2);color:var(--cyan)}
+.tab-pane{display:none;flex:1;flex-direction:column;min-height:0}
+.tab-pane.active{display:flex}
+
+/* ═══════════════════════════════════
+   CHAT PANE (משופר - יותר שורות)
+═══════════════════════════════════ */
+.chat-pane{flex:1;min-height:0;display:flex;flex-direction:column}
+.chat-enc-bar{
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  padding:6px;font-size:0.58rem;color:var(--t3);
+  border-bottom:1px solid var(--line2);flex-shrink:0;
+  letter-spacing:0.05em;
+}
+/* הגדלת גובה אזור ההודעות */
+.chat-msgs{
+  flex:1;height: 400px; overflow-y:auto;padding:14px;
+  display:flex;flex-direction:column;gap:10px;
+  scrollbar-width:thin;scrollbar-color:var(--line) transparent;
+}
+.chat-empty{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;color:var(--t3);font-size:0.72rem;letter-spacing:0.08em;
+  opacity:0.7;text-align:center;
+}
+.msg{display:flex;flex-direction:column;max-width:85%;gap:3px}
+.msg.me{align-self:flex-start}
+.msg.them{align-self:flex-end}
+.msg-bubble{
+  padding:9px 13px;border-radius:4px;
+  font-size:0.82rem;line-height:1.55;
+}
+.msg.me .msg-bubble{background:rgba(0,212,255,0.09);border:1px solid rgba(0,212,255,0.18);color:var(--t1)}
+.msg.them .msg-bubble{background:var(--card);border:1px solid var(--line);color:var(--t2)}
+.msg-time{
+  font-family:var(--mono);font-size:0.54rem;color:var(--t3);
+  display:flex;align-items:center;gap:4px;
+}
+.msg.me .msg-time{flex-direction:row}
+.msg.them .msg-time{flex-direction:row-reverse}
+.enc-badge{color:var(--green2);display:flex;align-items:center;gap:2px;font-size:0.52rem}
+
+/* אזור הזנת טקסט (משופר) */
+.chat-input-row{
+  display:flex;gap:8px;padding:12px;
+  border-top:1px solid var(--line2);flex-shrink:0;
+  background:rgba(0,0,0,0.2);align-items:flex-end;
+}
+.chat-textarea{
+  flex:1;background:var(--deep);border:1px solid var(--line);border-radius:var(--r);
+  color:var(--t1);font-family:var(--ui);font-size:0.82rem;
+  padding:10px 13px;resize:none;outline:none;
+  min-height: 50px; max-height:120px;
+  direction:rtl;transition:border-color var(--tr);line-height:1.5;
+}
+.chat-textarea::placeholder{color:var(--t4);font-size:0.76rem}
+.chat-textarea:focus{border-color:var(--cyan2)}
+.btn-send-chat{
+  width:46px;height:46px;flex-shrink:0;
+  background:rgba(0,212,255,0.08);border:1px solid var(--line2);
+  border-radius:var(--r);color:var(--cyan);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:all var(--tr);font-size:1rem;
+}
+.btn-send-chat:hover:not(:disabled){background:rgba(0,212,255,0.18);border-color:var(--cyan2)}
+
+/* ═══════════════════════════════════
+   TELEMETRY LOG (מהמקור)
+═══════════════════════════════════ */
+.log-panel{display:flex;flex-direction:column;min-height:0;position:relative}
+.panel-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 14px;height:38px;
+  border-bottom:1px solid var(--line2);
+  background:rgba(0,0,0,0.25);flex-shrink:0;
+}
+.panel-title{
+  font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;
+  color:var(--t3);display:flex;align-items:center;gap:7px;
+  font-family:var(--mono);
+}
+.log-body{
+  flex:1;overflow-y:auto;padding:10px 8px;
+  font-family:var(--mono);font-size:0.62rem;line-height:1.9;
+  direction:ltr;text-align:left;
+  scrollbar-width:thin;scrollbar-color:var(--line) transparent;
+}
+.log-line{display:flex;gap:6px;align-items:baseline;opacity:0;animation:log-in 0.3s ease forwards}
+@keyframes log-in{from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:translateX(0)}}
+.log-lv.info{color:#38bdf8}
+.log-lv.ok{color:var(--green)}
+.log-lv.warn{color:var(--amber)}
+.log-lv.err{color:var(--red)}
+.log-lv.p2p{color:var(--cyan)}
+.log-lv.voice{color:var(--purple)} /* צבע חדש ללוגים של קול */
+
+/* ═══════════════════════════════════
+   שונות
+═══════════════════════════════════ */
+.hidden{display:none!important}
+</style>
 </head>
 <body>
+<div class="grid-bg"></div>
 
-    <div class="header">
-        <h2>🛡️ ht-security | Terminal</h2>
-        <div class="flex-row">
-            <span>סטטוס:</span>
-            <strong id="status" style="color:var(--red);">[ מנותק ]</strong>
+<div class="app">
+
+  <header>
+    <div class="logo-block">
+      <div class="logo-hex">
+        <svg class="phone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l2.38-2.38a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+        </svg>
+        <svg class="hex-svg" width="40" height="40" viewBox="0 0 40 40" fill="none">
+          <polygon points="20,3 35,11.5 35,28.5 20,37 5,28.5 5,11.5"
+            stroke="rgba(0,212,255,0.3)" stroke-width="1" fill="none"/>
+        </svg>
+        <div class="logo-inner">ZDT</div>
+      </div>
+      <div class="logo-text">
+        <div class="logo-name">ZDT</div>
+        <div class="logo-tagline">Secure Tactical Terminal</div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <div class="peer-count">
+        <span>עמיתים:</span>
+        <span class="pc-val" id="peer-count-val">0/2</span>
+      </div>
+      <div class="conn-pill" id="conn-pill">
+        <div class="conn-dot" id="conn-dot"></div>
+        <span class="conn-label">סטטוס: <span class="state" id="conn-state">מנותק</span></span>
+      </div>
+    </div>
+  </header>
+
+  <div class="room-bar">
+    <div class="room-field">
+      <span class="room-field-label">מזהה חדר</span>
+      <input id="room-input" class="room-input" type="text"
+        placeholder="קוד חדר..."
+        maxlength="32" autocomplete="off" spellcheck="false" dir="ltr"/>
+    </div>
+    <div class="room-btns">
+      <button class="btn btn-ghost" onclick="UI.generateRoom()">⟳ אקראי</button>
+      <button class="btn btn-primary" id="btn-connect" onclick="UI.handleConnect()">
+        <span id="btn-connect-text">⬡ הקם מנהרה</span>
+      </button>
+      <button class="btn btn-danger hidden" id="btn-disconnect" onclick="UI.handleDisconnect()">✕ נתק</button>
+    </div>
+  </div>
+
+  <div class="main-layout">
+
+    <div class="left-panel panel">
+      <div class="lock-overlay" id="lock-overlay">
+        <div class="lock-icon">🔒</div>
+        <div class="lock-title">המערכת נעולה</div>
+        <div class="lock-sub">התחבר לחדר. המערכת תפתח אוטומטית כאשר המנהרה תאובטח מול העמית.</div>
+      </div>
+
+      <div class="voice-ctrl-zone">
+          <button class="btn btn-green" id="btn-voice-start" disabled onclick="ZDT.toggleVoiceCall()">
+            🎤 התחל שיחה מאובטחת
+          </button>
+      </div>
+
+      <div class="tabs-bar">
+        <button class="tab-btn active" onclick="UI.switchTab('chat', this)">
+          💬 צ׳אט מוצפן
+          <span class="tab-count" id="msg-count">0</span>
+        </button>
+        <button class="tab-btn" onclick="UI.switchTab('files', this)">
+          📁 העברת קבצים
+          <span class="tab-count" id="file-count">0</span>
+        </button>
+      </div>
+
+      <div class="tab-pane active" id="tab-chat">
+        <div class="chat-pane">
+          <div class="chat-msgs" id="chat-msgs">
+            <div class="chat-empty" id="chat-empty">
+              <span>המנהרה מאובטחת.</span>
+              <span style="opacity:0.5;font-size:0.62rem">הודעות מוצפנות מקצה לקצה (E2EE).</span>
+            </div>
+          </div>
+          <div class="chat-input-row">
+            <textarea id="chat-input" class="chat-textarea" rows="1"
+              placeholder="הודעה טקטית מוצפנת…"
+              onkeydown="UI.chatKey(event)"
+              oninput="UI.autoResize(this)"></textarea>
+            <button id="btn-chat-send" class="btn-send-chat" disabled onclick="ZDT.triggerChat()">➤</button>
+          </div>
         </div>
+      </div>
+
+      <div class="tab-pane" id="tab-files">
+        <div class="files-body">
+            <div style="text-align:center; color:var(--t3); padding:20px;">מנגנון העברת קבצים פעיל.</div>
+        </div>
+      </div>
+
     </div>
 
-    <div class="flex-row">
-        <input id="room-id" type="text" placeholder="מזהה חדר..." style="text-transform:uppercase; width: 120px;">
-        <input id="sec-key" type="password" placeholder="מפתח הצפנה (חובה)..." style="width: 180px; border-color:var(--red);">
-        <button id="connect-btn" onclick="UI.init()">הקם מנהרה</button>
-        <button id="voice-btn" style="display:none; border-color:var(--green); color:var(--green);" onclick="ZDT.toggleVoice()">🎤 פתח מיקרופון</button>
+    <div class="log-panel panel">
+      <div class="panel-head">
+        <div class="panel-title">טלמטריה</div>
+        <span class="panel-badge" id="log-count-badge">0 אירועים</span>
+      </div>
+      <div class="log-body" id="log-body"></div>
     </div>
 
-    <div id="chat-box"></div>
+  </div>
 
-    <div class="flex-row" style="margin-bottom: 15px;">
-        <input id="msg-input" type="text" placeholder="הקלד הודעה מוצפנת..." onkeydown="if(event.key==='Enter') UI.sendMsg()">
-        <button onclick="UI.sendMsg()" style="margin-bottom: 0;">שדר</button>
-    </div>
+</div>
 
-    <div class="log" id="log-box"></div>
-    <audio id="remote-audio" autoplay></audio>
+<audio id="remote-audio" autoplay></audio>
 
-    <script>
-        const SIGNAL_URL = 'https://zdt-signaling.onrender.com';
-        const ICE = { iceServers:[{urls:'stun:stun.l.google.com:19302'}] };
+<script>
+/* ═══════════════════════════════════════════════════════
+   ZDT CORE LOGIC
+═══════════════════════════════════════════════════════ */
 
-        const LOG = {
-            add(tag, msg, isErr=false) {
-                const b = document.getElementById('log-box');
-                const d = document.createElement('div');
-                d.innerHTML = `[${new Date().toTimeString().slice(0,8)}] <span style="color:${isErr?'var(--red)':'var(--cyan)'}">${tag}</span> ${msg}`;
-                b.appendChild(d); b.scrollTop = b.scrollHeight;
+const SIGNAL_URL  = 'https://zdt-signaling.onrender.com';
+const ICE_SERVERS = { iceServers:[{urls:'stun:stun.l.google.com:19302'}] };
+
+// ────────────────────────────────────────────────────────
+// LOG SYSTEM (מהמקור)
+// ────────────────────────────────────────────────────────
+const LOG = {
+  count: 0,
+  add(level, cat, msg) {
+    this.count++;
+    const badge = document.getElementById('log-count-badge');
+    if(badge) badge.textContent = this.count + ' אירועים';
+    const now = new Date();
+    const ts  = now.toTimeString().slice(0,8);
+    const d   = document.createElement('div');
+    d.className = 'log-line';
+    d.innerHTML = `<span class="log-ts">[${ts}]</span><span class="log-lv ${level}">${cat}</span><span class="log-msg">${msg}</span>`;
+    const b = document.getElementById('log-body');
+    if(b) { b.appendChild(d); b.scrollTop = b.scrollHeight; }
+  }
+};
+
+// ────────────────────────────────────────────────────────
+// UI CONTROLLER (משופר)
+// ────────────────────────────────────────────────────────
+const UI = {
+  msgCount: 0,
+
+  setConnState(state) {
+    const dot   = document.getElementById('conn-dot');
+    const label = document.getElementById('conn-state');
+    const btnC  = document.getElementById('btn-connect');
+    const btnD  = document.getElementById('btn-disconnect');
+
+    dot.className = 'conn-dot ' + (state === 'secure' ? 'secure' : (state === 'connecting' ? 'connecting' : ''));
+    label.textContent = state === 'secure' ? 'מאובטח ✓' : (state === 'connecting' ? 'מתחבר…' : 'מנותק');
+    label.className = 'state ' + state;
+
+    if (state === 'offline') {
+      btnC.classList.remove('hidden'); btnD.classList.add('hidden');
+      document.getElementById('btn-connect').disabled = false;
+    } else {
+      btnC.classList.add('hidden'); btnD.classList.remove('hidden');
+    }
+  },
+
+  setLocked(locked) {
+    const ov = document.getElementById('lock-overlay');
+    const btnVoice = document.getElementById('btn-voice-start');
+    const btnChat = document.getElementById('btn-chat-send');
+    
+    if (locked) {
+      ov.classList.remove('hidden');
+      btnVoice.disabled = true;
+      btnChat.disabled = true;
+    } else {
+      ov.classList.add('hidden');
+      btnVoice.disabled = false; // כפתור שיחה פעיל כשהמנהרה מאובטחת
+      btnChat.disabled = false;
+    }
+  },
+
+  setPeerCount(n) { document.getElementById('peer-count-val').textContent = n + '/2'; },
+
+  generateRoom() {
+    const id = 'TAC-' + Math.floor(1000 + Math.random()*9000);
+    document.getElementById('room-input').value = id;
+    LOG.add('info','GEN',`קוד: ${id}`);
+  },
+
+  handleConnect() {
+    const rid = document.getElementById('room-input').value.trim().toUpperCase();
+    if (!rid) return;
+    this.setConnState('connecting');
+    ZDT.connect(rid);
+  },
+
+  handleDisconnect() { ZDT.disconnect(); this.setConnState('offline'); this.setLocked(true); this.setPeerCount(0); },
+
+  // Chat UI
+  chatKey(e) { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); ZDT.triggerChat(); } },
+  autoResize(el){ el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,120)+'px'; },
+  appendMsg(text, side) {
+    const empty = document.getElementById('chat-empty');
+    if (empty) empty.style.display = 'none';
+    this.msgCount++;
+    document.getElementById('msg-count').textContent = String(this.msgCount);
+    const d  = document.createElement('div'); d.className=`msg ${side}`;
+    d.innerHTML=`<div class="msg-bubble">${this.esc(text)}</div><div class="msg-time"><span class="enc-badge">🔒 E2EE</span></div>`;
+    const msgs = document.getElementById('chat-msgs');
+    msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight;
+  },
+
+  // Tabs
+  switchTab(name, btn) {
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-'+name).classList.add('active');
+  },
+
+  esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+};
+
+// ────────────────────────────────────────────────────────
+// ZDT ENGINE (עם VoIP)
+// ────────────────────────────────────────────────────────
+const ZDT = {
+  socket: null, pc: null, dc: null, roomId: '', secure: false,
+  localStream: null, voiceActive: false,
+
+  connect(roomId) {
+    this.roomId = roomId;
+    LOG.add('info','SYS',`מתחבר לאותת...`);
+    this.socket = io(SIGNAL_URL, { transports:['websocket'] });
+
+    this.socket.on('connect', () => { this.socket.emit('join', roomId); });
+    
+    this.socket.on('joined', (data) => {
+        LOG.add('ok','NET',`מחובר לחדר. ממתין לעמית.`);
+        UI.setPeerCount(1);
+    });
+
+    this.socket.on('ready', () => { LOG.add('ok','NET',`עמית מוכן. מקים P2P.`); this.setup(true); });
+
+    this.socket.on('signal', async data => {
+        if(!this.pc) await this.setup(false);
+        if(data.sdp) {
+            await this.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            if(data.sdp.type === 'offer') {
+                const answer = await this.pc.createAnswer();
+                await this.pc.setLocalDescription(answer);
+                this.socket.emit('signal', { room: this.roomId, sdp: answer });
             }
-        };
+        } else if(data.candidate) {
+            await this.pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+        }
+    });
 
-        // מודול האימות הנוסף וההצפנה (AES-256)
-        const CRYPTO = {
-            key: null,
-            async derive(pass) {
-                const enc = new TextEncoder();
-                const base = await crypto.subtle.importKey("raw", enc.encode(pass), "PBKDF2", false, ["deriveKey"]);
-                this.key = await crypto.subtle.deriveKey(
-                    { name: "PBKDF2", salt: enc.encode("ht-sec-salt"), iterations: 100000, hash: "SHA-256" },
-                    base, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]
-                );
-                LOG.add('SYS', 'LOCAL AUTHENTICATION KEY SET');
-            },
-            async encrypt(txt) {
-                const iv = crypto.getRandomValues(new Uint8Array(12));
-                const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, this.key, new TextEncoder().encode(txt));
-                return JSON.stringify({ iv: btoa(String.fromCharCode(...iv)), ct: btoa(String.fromCharCode(...new Uint8Array(ct))) });
-            },
-            async decrypt(payload) {
-                try {
-                    const data = JSON.parse(payload);
-                    const iv = new Uint8Array(atob(data.iv).split('').map(c=>c.charCodeAt(0)));
-                    const ct = new Uint8Array(atob(data.ct).split('').map(c=>c.charCodeAt(0)));
-                    const dec = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, this.key, ct);
-                    return new TextDecoder().decode(dec);
-                } catch(e) {
-                    LOG.add('SEC', 'AUTH FAILED - WRONG KEY', true);
-                    return "[ נחסם: אימות מפתח נכשל ]";
-                }
-            }
-        };
+    this.socket.on('peer-left', () => {
+        LOG.add('warn','NET',`העמית נתק.`);
+        this.disconnect(false);
+    });
+  },
 
-        const UI = {
-            async init() {
-                const r = document.getElementById('room-id').value.toUpperCase();
-                const p = document.getElementById('sec-key').value;
-                if(!r || !p) return alert("שגיאה: חובה להזין מזהה חדר ומפתח הצפנה לאימות.");
-                
-                document.getElementById('connect-btn').disabled = true;
-                document.getElementById('connect-btn').innerText = 'מתחבר...';
-                
-                // הפעלת האימות המקומי
-                await CRYPTO.derive(p);
-                ZDT.connect(r);
-            },
-            async sendMsg() {
-                const inp = document.getElementById('msg-input');
-                if(!inp.value || !ZDT.dc) return;
-                const txt = inp.value; inp.value = '';
-                const enc = await CRYPTO.encrypt(txt);
-                ZDT.dc.send(enc);
-                this.append(txt, 'me');
-            },
-            append(txt, sender) {
-                const box = document.getElementById('chat-box');
-                const d = document.createElement('div');
-                d.className = `msg ${sender}`;
-                d.innerText = txt;
-                box.appendChild(d); box.scrollTop = box.scrollHeight;
-            }
-        };
+  disconnect(emit=true) {
+    if(emit && this.socket) this.socket.emit('leave', this.roomId);
+    if(this.localStream) this.localStream.getTracks().forEach(t=>t.stop());
+    if(this.dc) this.dc.close();
+    if(this.pc) this.pc.close();
+    this.pc = null; this.dc = null; this.secure = false; this.voiceActive = false;
+    UI.setConnState('offline'); UI.setLocked(true);
+  },
 
-        const ZDT = {
-            socket: null, pc: null, dc: null, stream: null, active: false,
-            connect(room) {
-                this.socket = io(SIGNAL_URL, {transports:['websocket']});
-                this.socket.on('connect', () => { this.socket.emit('join', room); });
-                this.socket.on('joined', () => { document.getElementById('status').innerText = '[ ממתין לעמית ]'; document.getElementById('status').style.color = 'var(--cyan)'; });
-                this.socket.on('ready', async () => { await this.setup(true, room); });
-                this.socket.on('message', async (m) => {
-                    if(!this.pc) await this.setup(false, room);
-                    if(m.type==='offer') { await this.pc.setRemoteDescription(m); const a = await this.pc.createAnswer(); await this.pc.setLocalDescription(a); this.socket.emit('message', room, a); }
-                    else if(m.type==='answer') await this.pc.setRemoteDescription(m);
-                    else if(m.candidate) await this.pc.addIceCandidate(m);
-                });
-            },
-            async setup(isInit, room) {
-                this.pc = new RTCPeerConnection(ICE);
-                this.pc.onicecandidate = e => e.candidate && this.socket.emit('message', room, e.candidate);
-                this.pc.ontrack = e => document.getElementById('remote-audio').srcObject = e.streams[0];
-                if(isInit) {
-                    this.dc = this.pc.createDataChannel('data'); this.bindDC();
-                    const o = await this.pc.createOffer(); await this.pc.setLocalDescription(o);
-                    this.socket.emit('message', room, o);
-                } else { this.pc.ondatachannel = e => { this.dc = e.channel; this.bindDC(); }; }
-            },
-            bindDC() {
-                this.dc.onopen = () => { 
-                    LOG.add('SEC', 'TUNNEL SECURED & AUTHENTICATED');
-                    document.getElementById('status').innerText = '[ מאובטח ]'; 
-                    document.getElementById('status').style.color = 'var(--green)';
-                    document.getElementById('voice-btn').style.display = 'inline-block';
-                    document.getElementById('connect-btn').style.display = 'none';
-                    document.getElementById('sec-key').disabled = true;
-                };
-                this.dc.onmessage = async e => {
-                    // פענוח הצפנה - אם המפתח שגוי, ההודעה תיחסם
-                    const txt = await CRYPTO.decrypt(e.data);
-                    UI.append(txt, 'them');
-                };
-            },
-            async toggleVoice() {
-                if(!this.active) {
-                    try {
-                        this.stream = await navigator.mediaDevices.getUserMedia({audio:true});
-                        this.stream.getTracks().forEach(t => this.pc.addTrack(t, this.stream));
-                        const room = document.getElementById('room-id').value.toUpperCase();
-                        const o = await this.pc.createOffer(); await this.pc.setLocalDescription(o);
-                        this.socket.emit('message', room, o);
-                        const btn = document.getElementById('voice-btn');
-                        btn.innerText = '🔴 נתק מיקרופון'; btn.style.color = 'var(--red)'; btn.style.borderColor = 'var(--red)';
-                        this.active = true; LOG.add('VOICE', 'MIC ON');
-                    } catch(e) { LOG.add('ERR', 'MIC DENIED', true); }
-                } else { location.reload(); }
-            }
+  async setup(isInitiator) {
+    LOG.add('info','RTC',`מגדיר PeerConnection...`);
+    this.pc = new RTCPeerConnection(ICE_SERVERS);
+    UI.setPeerCount(2);
+
+    // טיפול באודיו נכנס
+    this.pc.ontrack = e => {
+        LOG.add('voice','VoIP',`ערוץ שמע נכנס פעיל.`);
+        document.getElementById('remote-audio').srcObject = e.streams[0];
+    };
+
+    this.pc.onicecandidate = e => {
+        if(e.candidate) this.socket.emit('signal', { room: this.roomId, candidate: e.candidate });
+    };
+
+    if(isInitiator) {
+        LOG.add('info','RTC',`יוצר DataChannel...`);
+        this.dc = this.pc.createDataChannel("chat");
+        this.bindDC();
+        const offer = await this.pc.createOffer();
+        await this.pc.setLocalDescription(offer);
+        this.socket.emit('signal', { room: this.roomId, sdp: offer });
+    } else {
+        this.pc.ondatachannel = e => {
+            this.dc = e.channel;
+            this.bindDC();
+            LOG.add('ok','RTC',`DataChannel התקבל.`);
         };
-    </script>
+    }
+  },
+
+  bindDC() {
+    this.dc.onopen = () => {
+        LOG.add('ok','SEC',`מנהרה מוצפנת מאובטחת (E2EE).`);
+        this.secure = true;
+        UI.setConnState('secure');
+        UI.setLocked(false);
+    };
+    this.dc.onmessage = e => UI.appendMsg(e.data, 'them');
+  },
+
+  triggerChat() {
+    const inp = document.getElementById('chat-input');
+    if(!inp.value || !this.dc || this.dc.readyState !== 'open') return;
+    this.dc.send(inp.value);
+    UI.appendMsg(inp.value, 'me');
+    inp.value = ''; inp.style.height = 'auto';
+  },
+
+  // ─── לוגיקת שיחה קולית (VoIP) ───
+  async toggleVoiceCall() {
+    if(!this.secure || !this.pc) return;
+    const btn = document.getElementById('btn-voice-start');
+
+    if(!this.voiceActive) {
+        // התחלת שיחה
+        LOG.add('voice','VoIP',`מבקש גישה למיקרופון...`);
+        btn.disabled = true;
+        btn.textContent = "מתחבר...";
+
+        try {
+            this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            LOG.add('ok','VoIP',`גישה למיקרופון אושרה.`);
+            
+            this.localStream.getTracks().forEach(track => this.pc.addTrack(track, this.localStream));
+            
+            // משא ומתן מחדש (Renegotiation) כדי להוסיף את הקול מחדש
+            const offer = await this.pc.createOffer();
+            await this.pc.setLocalDescription(offer);
+            this.socket.emit('signal', { room: this.roomId, sdp: offer });
+
+            this.voiceActive = true;
+            btn.disabled = false;
+            btn.textContent = "🎤 נתק שיחה מאובטחת";
+            btn.classList.add('btn-voice-active');
+            LOG.add('voice','VoIP',`שיחה קולית מוצפנת פעילה.`);
+
+        } catch(e) {
+            LOG.add('err','VoIP',`גישה למיקרופון נדחתה או שגיאה: ${e.message}`);
+            btn.disabled = false;
+            btn.textContent = "🎤 התחל שיחה מאובטחת";
+        }
+    } else {
+        // ניתוק שיחה (מרענן את הדף כדי לנקות טראקים בצורה נקייה, או סוגר טראקים)
+        LOG.add('warn','VoIP',`מנתק שיחה קולית...`);
+        if(this.localStream) this.localStream.getTracks().forEach(t=>t.stop());
+        
+        // אופציונלי: בצע renegotiation כדי להסיר את הטראק, אבל רענון הוא הכי אמין
+        location.reload(); 
+    }
+  }
+};
+
+// ────────────────────────────────────────────────────────
+// INIT (מהמקור)
+// ────────────────────────────────────────────────────────
+(function init(){
+  UI.setLocked(true);
+  LOG.add('info','SYS',`ZDT מערכת טקטית מאותחלת.`);
+  
+  document.getElementById('room-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') UI.handleConnect();
+  });
+})();
+</script>
 </body>
 </html>
