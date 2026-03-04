@@ -3,93 +3,84 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0"/>
-<title>ZDT — Tactical Secure Terminal</title>
+<title>ZDT — מערכת העברה מאובטחת</title>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
 <style>
 /* ═══════════════════════════════════
-    DESIGN TOKENS & BASE
+   DESIGN TOKENS - חזרה למקור
 ═══════════════════════════════════ */
-:root {
-  --void:#030712; --deep:#060d1a; --panel:#0a1428; --card:#0d1b35;
-  --line:#1a2d4a; --line2:rgba(0,212,255,0.12);
+:root{
+  --void:#030712; --deep:#060d1a; --panel:#0a1428; --card:#0d1b35; --line:#1a2d4a; --line2:rgba(0,212,255,0.12);
   --cyan:#00d4ff; --cyan2:rgba(0,212,255,0.6); --cyan3:rgba(0,212,255,0.15);
-  --green:#00ff9d; --green2:rgba(0,255,157,0.6); --green3:rgba(0,255,157,0.12);
-  --red:#ff3366; --amber:#ffb800; --purple:#a855f7;
-  --t1:#dbeafe; --t2:#7ea8c9; --t3:#3d6080; --t4:#1e3a52;
-  --mono:'JetBrains Mono',monospace; --ui:'Heebo',sans-serif;
-  --r:6px; --tr:0.2s cubic-bezier(0.4,0,0.2,1);
+  --green:#00ff9d; --red:#ff3366; --t1:#dbeafe; --t2:#7ea8c9; --t3:#3d6080; --t4:#1e3a52;
+  --mono:'JetBrains Mono',monospace; --ui:'Heebo',sans-serif; --r:6px; --tr:0.2s cubic-bezier(0.4,0,0.2,1);
 }
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;overscroll-behavior:none}
 body{background:var(--void);color:var(--t1);font-family:var(--ui);font-size:14px;overflow-x:hidden;min-height:100vh;}
 
-body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.035) 2px,rgba(0,0,0,0.035) 4px);pointer-events:none;z-index:9000;}
-body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(0,212,255,0.04) 0%,transparent 60%);pointer-events:none;z-index:0;}
 .grid-bg{position:fixed;inset:0;z-index:0;background-image:linear-gradient(rgba(0,212,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,0.025) 1px,transparent 1px);background-size:50px 50px;animation:grid-drift 60s linear infinite;}
 @keyframes grid-drift{to{background-position:50px 50px}}
 
-.app{position:relative;z-index:1;height:100vh;display:flex;flex-direction:column;max-width:1200px;margin:0 auto;padding:0 12px 16px;}
+.app{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column;max-width:980px;margin:0 auto;padding:0 12px 16px;}
 
 header{display:flex;align-items:center;justify-content:space-between;padding:12px 0 10px;border-bottom:1px solid var(--line2);gap:10px;flex-wrap:wrap;flex-shrink:0;}
 .logo-block{display:flex;align-items:center;gap:10px}
 .logo-hex{position:relative;width:40px;height:40px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .logo-hex svg{position:absolute;animation:hex-rot 18s linear infinite}
 @keyframes hex-rot{to{transform:rotate(360deg)}}
-.logo-inner{font-family:var(--mono);font-size:0.9rem;font-weight:700;color:var(--cyan);letter-spacing:0.06em;text-shadow:0 0 16px var(--cyan)}
+.logo-inner{font-family:var(--mono);font-size:0.9rem;font-weight:700;color:var(--cyan);text-shadow:0 0 16px var(--cyan)}
 .logo-name{font-family:var(--mono);font-size:1.1rem;font-weight:700;color:var(--cyan);letter-spacing:0.1em}
 
 .conn-pill{display:flex;align-items:center;gap:8px;padding:7px 14px;background:var(--panel);border:1px solid var(--line2);border-radius:100px;font-size:0.72rem;}
-.conn-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--red);box-shadow:0 0 6px var(--red);transition:all var(--tr);}
-.conn-dot.connecting{background:var(--amber);box-shadow:0 0 8px var(--amber);animation:blink 0.65s ease infinite}
-.conn-dot.connected{background:var(--cyan);box-shadow:0 0 10px var(--cyan);animation:pulse 2.5s ease infinite}
-.conn-dot.secure{background:var(--green);box-shadow:0 0 10px var(--green);animation:pulse 2.5s ease infinite}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:0.15}} @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.45}}
-.conn-label{color:var(--t2);white-space:nowrap}
+.conn-dot{width:8px;height:8px;border-radius:50%;background:var(--red);box-shadow:0 0 6px var(--red);transition:all var(--tr);}
+.conn-dot.secure{background:var(--cyan);box-shadow:0 0 10px var(--cyan);}
+.state.secure{color:var(--cyan) !important;}
 
+/* ROOM CONTROL */
 .room-bar{padding:14px 0 12px;border-bottom:1px solid var(--line2);display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0;}
 .room-field{flex:1;min-width:140px;position:relative;}
 .room-field-label{position:absolute;top:6px;right:12px;font-size:0.55rem;color:var(--t3);text-transform:uppercase;pointer-events:none;}
-.room-input{width:100%;padding:22px 12px 7px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);color:var(--cyan);font-family:var(--mono);font-size:0.88rem;outline:none;transition:var(--tr);}
-.room-input:focus{border-color:var(--cyan2);box-shadow:0 0 0 3px rgba(0,212,255,0.08)}
+.room-input{width:100%;padding:22px 12px 7px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);color:var(--cyan);font-family:var(--mono);font-size:0.88rem;outline:none;}
 
-.btn{font-family:var(--ui);font-weight:700;border:none;border-radius:var(--r);cursor:pointer;transition:all var(--tr);display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;position:relative;overflow:hidden;}
-.btn-ghost{padding:0 16px;background:var(--panel);border:1px solid var(--line);color:var(--t2);font-size:0.78rem;min-height:48px;}
-.btn-primary{padding:0 20px;min-height:48px;background:transparent;border:1.5px solid var(--cyan);color:var(--cyan);font-size:0.82rem;clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);}
-.btn-primary::before{content:'';position:absolute;inset:0;background:var(--cyan);transform:scaleX(0);transform-origin:right;transition:transform 0.28s ease;z-index:-1;}
-.btn-primary:hover:not(:disabled){color:#000} .btn-primary:hover:not(:disabled)::before{transform:scaleX(1)}
+.btn{font-family:var(--ui);font-weight:700;border:none;border-radius:var(--r);cursor:pointer;transition:all var(--tr);display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;padding:0 20px;}
+.btn-primary{background:transparent;border:1.5px solid var(--cyan);color:var(--cyan);clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);}
+.btn-primary:hover{background:var(--cyan);color:#000}
+.btn-ghost{background:var(--panel);border:1px solid var(--line);color:var(--t2);font-size:0.78rem;}
 
-.main-layout{flex:1;display:grid;grid-template-columns:1fr 350px;gap:10px;padding:10px 0;min-height:0;position:relative;}
+/* MAIN LAYOUT */
+.main-layout{flex:1;display:grid;grid-template-columns:1fr 300px;gap:10px;padding:10px 0;min-height:0;}
 .panel{background:var(--panel);border:1px solid var(--line2);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;min-height:0;position:relative;}
 
-.lock-overlay{position:absolute;inset:0;background:rgba(3,7,18,0.92);backdrop-filter:blur(4px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:50;text-align:center;padding:32px 24px;}
+.lock-overlay{position:absolute;inset:0;background:rgba(3,7,18,0.88);backdrop-filter:blur(4px);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:50;text-align:center;}
 .lock-overlay.hidden{display:none}
 
-.tabs-bar{display:flex;border-bottom:1px solid var(--line2);flex-shrink:0;}
-.tab-btn{flex:1;padding:12px 8px;background:none;border:none;border-bottom:2px solid transparent;color:var(--t3);font-family:var(--ui);font-weight:700;font-size:0.85rem;cursor:pointer;transition:all var(--tr);display:flex;align-items:center;justify-content:center;gap:7px;}
+/* TABS & CHAT */
+.tabs-bar{display:flex;border-bottom:1px solid var(--line2);background:rgba(0,0,0,0.2);}
+.tab-btn{flex:1;padding:12px 8px;background:none;border:none;border-bottom:2px solid transparent;color:var(--t3);font-family:var(--ui);font-weight:700;font-size:0.8rem;cursor:pointer;}
 .tab-btn.active{color:var(--cyan);border-bottom-color:var(--cyan);background:rgba(0,212,255,0.05)}
+.tab-pane{display:none;flex:1;flex-direction:column;min-height:0}
+.tab-pane.active{display:flex}
 
-/* CHAT AREA - Expanded as requested */
-.chat-pane{flex:1;min-height:0;display:flex;flex-direction:column}
-.chat-msgs{flex:1;height: 500px; overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px;}
-.msg-bubble{padding:10px 15px;border-radius:4px;font-size:0.95rem;line-height:1.5;}
+/* 🟢 שינוי: הגדלת גובה הצ'אט ורוחב התיבה */
+.chat-msgs{flex:1;height: 500px; overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;}
+.msg-bubble{padding:9px 13px;border-radius:4px;font-size:0.82rem;line-height:1.55;}
 .msg.me .msg-bubble{background:rgba(0,212,255,0.09);border:1px solid rgba(0,212,255,0.18);color:var(--t1)}
 .msg.them .msg-bubble{background:var(--card);border:1px solid var(--line);color:var(--green)}
 
 .chat-input-row{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line2);background:rgba(0,0,0,0.2);}
-.chat-textarea{flex:1;background:var(--deep);border:1px solid var(--line);border-radius:var(--r);color:var(--t1);font-family:var(--ui);font-size:0.95rem;padding:12px;resize:none;outline:none;min-height:60px;max-height:150px;direction:rtl;}
+.chat-textarea{flex:1;background:var(--deep);border:1px solid var(--line);border-radius:var(--r);color:var(--t1);font-family:var(--ui);font-size:0.82rem;padding:10px 13px;resize:none;outline:none;min-height:65px;max-height:150px;direction:rtl;}
+.btn-send-chat{width:46px;height:46px;background:rgba(0,212,255,0.08);border:1px solid var(--line2);border-radius:var(--r);color:var(--cyan);cursor:pointer;}
 
-.log-body{flex:1;overflow-y:auto;padding:10px;font-family:var(--mono);font-size:0.65rem;direction:ltr;text-align:left;}
-.log-ts{color:var(--t4);margin-right:6px} .log-lv.ok{color:var(--green)} .log-lv.err{color:var(--red)}
+.log-body{flex:1;overflow-y:auto;padding:10px 8px;font-family:var(--mono);font-size:0.62rem;line-height:1.9;direction:ltr;text-align:left;}
+.log-ts{color:var(--t4)} .log-lv.ok{color:var(--green)} .log-lv.err{color:var(--red)}
 
-.stats-bar{display:flex;justify-content:space-between;align-items:center;padding:10px 0 0;border-top:1px solid var(--line2);font-family:var(--mono);font-size:0.65rem;color:var(--t3);direction:ltr;}
 .hidden{display:none!important}
 </style>
 </head>
 <body>
-
 <div class="grid-bg"></div>
 <audio id="remote-audio" autoplay></audio>
 
@@ -100,26 +91,25 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
         <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><polygon points="20,3 35,11.5 35,28.5 20,37 5,28.5 5,11.5" stroke="rgba(0,212,255,0.3)" stroke-width="1"/></svg>
         <div class="logo-inner">ZDT</div>
       </div>
-      <div class="logo-text"><div class="logo-name">ZDT_CORE</div><div class="logo-tagline">Secure Tactical Transfer</div></div>
+      <div class="logo-text"><div class="logo-name">ZDT_CORE</div><div class="logo-tagline">Secure Tactical Terminal</div></div>
     </div>
     <div style="display:flex;gap:12px;align-items:center;">
-      <button id="btn-voice" class="btn btn-ghost hidden" onclick="ZDT.toggleVoice()" style="min-height:36px; border-color:var(--cyan); color:var(--cyan);">📞 קשר קולי</button>
-      <div class="conn-pill" id="conn-pill"><div class="conn-dot" id="conn-dot"></div><span class="conn-label">סטטוס: <span id="conn-state">מנותק</span></span></div>
+      <button id="btn-voice" class="btn btn-ghost hidden" onclick="ZDT.toggleVoice()" style="min-height:36px; color:var(--cyan); border-color:var(--cyan);">📞 הפעל קשר קולי</button>
+      <div class="conn-pill"><div id="conn-dot" class="conn-dot"></div><span class="conn-label">סטטוס: <span class="state" id="conn-state">מנותק</span></span></div>
     </div>
   </header>
 
   <div class="room-bar">
-    <div class="room-field"><span class="room-field-label">מזהה חדר</span><input id="room-input" class="room-input" type="text" placeholder="ID..."></div>
-    <div class="room-field"><span class="room-field-label">מפתח אבטחה (PSK)</span><input id="psk-input" class="room-input" type="password" placeholder="סיסמה חסויה..."></div>
+    <div class="room-field"><span class="room-field-label">מזהה חדר</span><input id="room-input" class="room-input" type="text" placeholder="ID..." maxlength="32" autocomplete="off"></div>
+    <div class="room-field"><span class="room-field-label">מפתח אבטחה (PSK)</span><input id="psk-input" class="room-input" type="password" placeholder="סיסמה נוספת..."></div>
     <div class="room-btns">
-      <button class="btn btn-primary" id="btn-connect" onclick="UI.handleConnect()"><span id="btn-connect-text">⬡ הקם מנהרה</span></button>
-      <button class="btn btn-danger hidden" id="btn-disconnect" onclick="UI.handleDisconnect()">✕ נתק</button>
+      <button class="btn btn-primary" id="btn-connect" onclick="UI.handleConnect()">⬡ הקם מנהרה</button>
     </div>
   </div>
 
   <div class="main-layout">
     <div class="panel">
-      <div class="lock-overlay" id="lock-overlay"><div class="lock-title">המנהרה נעולה</div><div class="lock-sub">יש להזין מזהה חדר ומפתח אבטחה תואם בשני הצדדים.</div></div>
+      <div class="lock-overlay" id="lock-overlay"><div style="font-size:2rem">🔒</div><div style="color:var(--t2)">המנהרה נעולה</div><div style="font-size:0.7rem;color:var(--t4)">הזן מזהה חדר ומפתח אבטחה תואם בשני הצדדים.</div></div>
       <div class="tabs-bar"><button class="tab-btn active" onclick="UI.switchTab('chat', this)">💬 צ'אט סודי</button><button class="tab-btn" onclick="UI.switchTab('files', this)">📁 נתונים</button></div>
       
       <div class="tab-pane active" id="tab-chat">
@@ -131,13 +121,14 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
           </div>
         </div>
       </div>
-      <div class="tab-pane" id="tab-files"><div class="files-body"><button class="btn btn-green" id="btn-send" disabled onclick="ZDT.triggerSend()">🚀 שדר קבצים</button></div></div>
+      <div class="tab-pane" id="tab-files"><div style="padding:20px;text-align:center;color:var(--t4)">העברת נתונים פעילה במנהרה מאובטחת.</div></div>
     </div>
 
-    <div class="panel"><div class="panel-head"><div class="panel-title">טלמטריה</div></div><div class="log-body" id="log-body"></div></div>
+    <div class="panel">
+      <div style="padding:10px;font-size:0.6rem;color:var(--t3);border-bottom:1px solid var(--line2)">טלמטריה</div>
+      <div class="log-body" id="log-body"></div>
+    </div>
   </div>
-
-  <div class="stats-bar"><div class="enc-tag">AES-256-GCM + PSK AUTH</div><div id="stat-io">TX: 0 B | RX: 0 B</div></div>
 </div>
 
 <script>
@@ -147,17 +138,18 @@ const ICE_SERVERS = { iceServers:[{urls:'stun:stun.l.google.com:19302'}] };
 const LOG = {
   add(lv, cat, msg) {
     const d = document.createElement('div');
-    d.innerHTML = `<span class="log-ts">[${new Date().toTimeString().slice(0,8)}]</span><span class="log-lv ${lv}">[${cat}]</span> ${msg}`;
+    d.innerHTML = `<span class="log-ts">[${new Date().toTimeString().slice(0,8)}]</span> <span class="log-lv ${lv}">[${cat}]</span> ${msg}`;
     const b = document.getElementById('log-body'); b.appendChild(d); b.scrollTop = b.scrollHeight;
   }
 };
 
 const UI = {
   setConnState(s) {
-    document.getElementById('conn-dot').className = 'conn-dot ' + s;
-    document.getElementById('conn-state').textContent = s==='secure'?'מאובטח':s==='connected'?'ממתין':'מנותק';
+    document.getElementById('conn-dot').className = 'conn-dot ' + (s==='secure'?'secure':'');
+    document.getElementById('conn-state').textContent = s==='secure'?'מאובטח':s==='connecting'?'מתחבר':'מנותק';
+    document.getElementById('conn-state').className = 'state ' + s;
   },
-  setLocked(l) { 
+  setLocked(l) {
     document.getElementById('lock-overlay').classList.toggle('hidden', !l);
     document.getElementById('btn-chat-send').disabled = l;
     document.getElementById('btn-voice').classList.toggle('hidden', l);
@@ -168,28 +160,27 @@ const UI = {
     if(!r || !p) return alert("חובה להזין ID וסיסמה");
     ZDT.connect(r, p);
   },
-  handleDisconnect() { location.reload(); },
+  switchTab(n, b) {
+    document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active'); document.getElementById('tab-'+n).classList.add('active');
+  },
   chatKey(e) { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); ZDT.triggerChat(); } },
   appendMsg(t, s) {
     const d = document.createElement('div'); d.className=`msg ${s}`;
     d.innerHTML=`<div class="msg-bubble">${t}</div>`;
     const msgs = document.getElementById('chat-msgs'); msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight;
-  },
-  switchTab(n, b) {
-    document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));
-    document.querySelectorAll('.tab-pane').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active'); document.getElementById('tab-'+n).classList.add('active');
   }
 };
 
 const ZDT = {
-  socket: null, pc: null, dc: null, sharedKey: null, psk: '', secure: false,
+  socket: null, pc: null, dc: null, sharedKey: null, psk: '',
   async connect(room, psk) {
     this.psk = psk;
     this.socket = io(SIGNAL_URL, { transports:['websocket'] });
-    this.socket.on('connect', () => this.socket.emit('join', room));
-    this.socket.on('joined', () => UI.setConnState('connected'));
-    this.socket.on('ready', async () => { await this._setup(); if(this.socket.id) this._start(); });
+    this.socket.on('connect', () => { LOG.add('ok','NET','מחובר לשרת'); this.socket.emit('join', room); });
+    this.socket.on('joined', () => UI.setConnState('connecting'));
+    this.socket.on('ready', async () => { await this._setup(); this._start(room); });
     this.socket.on('message', async m => {
       if(!this.pc) await this._setup();
       if(m.sdp) { await this.pc.setRemoteDescription(new RTCSessionDescription(m.sdp)); if(m.sdp.type==='offer'){const a=await this.pc.createAnswer(); await this.pc.setLocalDescription(a); this.socket.emit('message', room, {sdp:a});}}
@@ -202,29 +193,29 @@ const ZDT = {
     this.pc.ontrack = e => document.getElementById('remote-audio').srcObject = e.streams[0];
     this.pc.ondatachannel = e => this._attach(e.channel);
     
-    // PSK Key Derivation
+    // 🟢 שינוי: יצירת מפתח AES מבוסס PSK
     const enc = new TextEncoder();
     const base = await crypto.subtle.importKey("raw", enc.encode(this.psk), "PBKDF2", false, ["deriveKey"]);
     this.sharedKey = await crypto.subtle.deriveKey(
-      { name: "PBKDF2", salt: enc.encode("zdt-salt"), iterations: 100000, hash: "SHA-256" },
+      { name: "PBKDF2", salt: enc.encode("ht-salt"), iterations: 100000, hash: "SHA-256" },
       base, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]
     );
   },
-  async _start() {
-    const ch = this.pc.createDataChannel('zdt'); this._attach(ch);
+  async _start(room) {
+    this.dc = this.pc.createDataChannel('zdt'); this._attach(this.dc);
     const o = await this.pc.createOffer(); await this.pc.setLocalDescription(o);
-    this.socket.emit('message', this.roomId, {sdp:o});
+    this.socket.emit('message', room, {sdp:o});
   },
   _attach(ch) {
     this.dc = ch;
-    this.dc.onopen = () => { UI.setConnState('secure'); UI.setLocked(false); LOG.add('ok','SEC','Tunnel Authenticated'); };
+    this.dc.onopen = () => { UI.setConnState('secure'); UI.setLocked(false); LOG.add('ok','SEC','מנהרה מאובטחת'); };
     this.dc.onmessage = async e => {
       try {
         const d = JSON.parse(e.data);
         const iv = new Uint8Array(d.iv);
         const dec = await crypto.subtle.decrypt({name:'AES-GCM', iv}, this.sharedKey, new Uint8Array(d.ct));
         UI.appendMsg(new TextDecoder().decode(dec), 'them');
-      } catch(e) { LOG.add('err','SEC','Auth Failed'); }
+      } catch(e) { LOG.add('err','SEC','כשל אימות מפתח'); }
     };
   },
   async triggerChat() {
@@ -233,6 +224,12 @@ const ZDT = {
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv}, this.sharedKey, new TextEncoder().encode(txt));
     this.dc.send(JSON.stringify({iv:Array.from(iv), ct:Array.from(new Uint8Array(ct))}));
+  },
+  async toggleVoice() {
+    const s = await navigator.mediaDevices.getUserMedia({audio:true});
+    s.getTracks().forEach(t => this.pc.addTrack(t, s));
+    const o = await this.pc.createOffer(); await this.pc.setLocalDescription(o);
+    this.socket.emit('message', document.getElementById('room-input').value.toUpperCase(), {sdp:o});
   }
 };
 </script>
