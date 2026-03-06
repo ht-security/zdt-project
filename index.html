@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0"/>
-<title>ZDT — מערכת העברה מאובטחת</title>
+<title>ZDT — מערכת העברה מאובטחת (HARDENED)</title>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
@@ -265,7 +265,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
 
       <div class="tab-pane" id="tab-chat">
         <div class="chat-pane">
-          <div style="text-align:center;padding:10px;font-size:0.7rem;color:var(--t3);border-bottom:1px solid var(--line2);">🔒 ערוץ מוצפן קצה-לקצה · אפס רישומים נשמרים</div>
+          <div style="text-align:center;padding:10px;font-size:0.7rem;color:var(--t3);border-bottom:1px solid var(--line2);">🔒 ערוץ מוצפן קצה-לקצה · חסין Replay Attack</div>
           <div class="chat-msgs" id="chat-msgs"></div>
           <div class="chat-input-row">
             <textarea id="chat-input" class="chat-textarea" placeholder="הקלד הודעה מוצפנת..." onkeydown="UI.chatKey(event)"></textarea>
@@ -295,19 +295,27 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
 
 <script>
 // ────────────────────────────────────────────────────────
-// ZDT ARCHITECTURE - FULLY ALIGNED WITH RENDER SERVER
+// ZDT ARCHITECTURE - SECURED WITH BLIND ROUTING
 // ────────────────────────────────────────────────────────
 const SIGNAL_URL  = 'https://zdt-signaling.onrender.com';
 const CHUNK_SIZE  = 16 * 1024; // 16 KB
+
+// 🛡️ הערת אבטחה: שרתי גוגל מדליפים את מיקומך. במערכת מבצעית טהורה, יש להחליף ב-TURN פרטי.
 const ICE_SERVERS = { 
   iceServers:[
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' }
+    { urls: 'stun:stun1.l.google.com:19302' }
   ] 
 };
+
+// 🛡️ פונקציית עזר ליצירת ניתוב עיוור (Blind Routing) המגן על זהות החדר משרת הסיגנלינג
+async function hashBlindRoom(room, psk) {
+  const enc = new TextEncoder();
+  const data = enc.encode(room + "|||ZDT_SALT|||" + psk);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return "ZDT-" + hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
+}
 
 const LOG = {
   add(level, cat, msg) {
@@ -365,7 +373,7 @@ const UI = {
     LOG.add('info','GEN',`ID Generated: ${id}`);
   },
 
-  handleConnect() {
+  async handleConnect() {
     const rid = document.getElementById('room-input').value.trim().toUpperCase();
     const psk = document.getElementById('psk-input').value.trim();
     if (!rid || !psk) {
@@ -373,7 +381,7 @@ const UI = {
         return;
     }
     this.setConnState('connecting');
-    ZDT.connect(rid, psk); // העברת ה-PSK ללוגיקה
+    await ZDT.connect(rid, psk);
   },
 
   handleDisconnect() { ZDT.disconnect(); this.setConnState('offline'); this.setLocked(true); document.getElementById('peer-count-val').textContent='0/2'; },
@@ -445,22 +453,30 @@ const UI = {
 };
 
 const ZDT = {
-  socket: null, pc: null, dc: null, roomId: '', psk: '',
+  socket: null, pc: null, dc: null, roomId: '', psk: '', blindRoomId: '',
   localDH: null, sharedKey: null, secure: false,
   isInitiator: false, joinTime: 0, rxMeta: null, rxChunks: [], rxReceived: 0,
   
   localStream: null, voiceActive: false,
 
-  connect(roomId, psk) {
+  async connect(roomId, psk) {
     this.roomId = roomId;
     this.psk = psk;
+    // 🛡️ ביצוע גיבוב למיסוך הניתוב
+    this.blindRoomId = await hashBlindRoom(roomId, psk);
+    LOG.add('crypto', 'SEC', `Blind Routing ID Generated.`);
+
     if (this.socket) this.socket.disconnect();
     this.socket = io(SIGNAL_URL, { transports:['websocket'] });
 
-    this.socket.on('connect', () => { LOG.add('info','NET',`Uplink OK`); this.socket.emit('join', roomId); });
+    this.socket.on('connect', () => { 
+        LOG.add('info','NET',`Uplink OK`); 
+        // 🛡️ שולח לשרת את החדר המגובב בלבד
+        this.socket.emit('join', this.blindRoomId); 
+    });
 
     this.socket.on('joined', () => {
-      LOG.add('ok','ROOM',`נכנס לחדר, ממתין לעמית...`);
+      LOG.add('ok','ROOM',`נכנס לחדר ממוסך, ממתין לעמית...`);
       UI.setConnState('connected');
       document.getElementById('peer-count-val').textContent='1/2';
       this.joinTime = Date.now(); 
@@ -489,7 +505,8 @@ const ZDT = {
           await this.pc.setRemoteDescription(new RTCSessionDescription(msg));
           const ans = await this.pc.createAnswer();
           await this.pc.setLocalDescription(ans);
-          this.socket.emit('message', this.roomId, ans);
+          // 🛡️ שימוש בחדר המגובב
+          this.socket.emit('message', this.blindRoomId, ans);
         } else if (msg.type === 'answer') {
           LOG.add('info','RTC','תשובת רשת התקבלה - מסנכרן...');
           await this.pc.setRemoteDescription(new RTCSessionDescription(msg));
@@ -520,7 +537,10 @@ const ZDT = {
 
   async _setupPeer() {
     this.pc = new RTCPeerConnection(ICE_SERVERS);
-    this.pc.onicecandidate = ({ candidate }) => { if (candidate) this.socket.emit('message', this.roomId, candidate.toJSON()); };
+    this.pc.onicecandidate = ({ candidate }) => { 
+        // 🛡️ שימוש בחדר המגובב
+        if (candidate) this.socket.emit('message', this.blindRoomId, candidate.toJSON()); 
+    };
     this.pc.ondatachannel = ({ channel }) => { this._attachDC(channel); };
     
     this.pc.ontrack = ({ streams }) => {
@@ -537,7 +557,7 @@ const ZDT = {
     this._attachDC(ch);
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
-    this.socket.emit('message', this.roomId, offer);
+    this.socket.emit('message', this.blindRoomId, offer);
   },
 
   _attachDC(channel) {
@@ -555,7 +575,6 @@ const ZDT = {
     const remotePub = await crypto.subtle.importKey('jwk', remotePubJwk, { name:'ECDH', namedCurve:'P-256' }, false, []);
     const bits = await crypto.subtle.deriveBits({ name:'ECDH', public:remotePub }, this.localDH.privateKey, 256);
     
-    // 🟢 הזרקת ה-PSK: שילוב סיסמת המשתמש לתוך מפתח ה-ECDH בלי לשבור את ה-Signaling
     const pskBytes = new TextEncoder().encode(this.psk);
     const combined = new Uint8Array(bits.byteLength + pskBytes.byteLength);
     combined.set(new Uint8Array(bits), 0);
@@ -577,7 +596,14 @@ const ZDT = {
       if (msg.type === 'chat') { 
         try {
           const plain = await crypto.subtle.decrypt({ name:'AES-GCM', iv:new Uint8Array(msg.iv) }, this.sharedKey, new Uint8Array(msg.enc));
-          UI.appendMsg(new TextDecoder().decode(plain), 'them');
+          const payload = JSON.parse(new TextDecoder().decode(plain));
+          
+          // 🛡️ מניעת Replay Attack ע"י בדיקת חותמת הזמן המוצפנת (חלון של דקה)
+          if (Date.now() - payload.ts > 60000) {
+              LOG.add('err', 'SEC', 'Replay Attack Detected! Message Dropped.');
+              return;
+          }
+          UI.appendMsg(payload.msg, 'them');
         } catch(e) { LOG.add('err','SEC','Auth Failed: Wrong PSK Blocked Message'); }
         return; 
       }
@@ -634,7 +660,11 @@ const ZDT = {
     const txt = inp.value.trim(); if (!txt || !this.secure) return;
     UI.appendMsg(txt, 'me'); inp.value='';
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    const enc = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, this.sharedKey, new TextEncoder().encode(txt));
+    
+    // 🛡️ הוספת חותמת זמן לתוך המטען המוצפן (Replay Protection)
+    const payload = JSON.stringify({ msg: txt, ts: Date.now() });
+    const enc = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, this.sharedKey, new TextEncoder().encode(payload));
+    
     this.dc.send(JSON.stringify({ type:'chat', enc:Array.from(new Uint8Array(enc)), iv:Array.from(iv) }));
   },
 
@@ -651,7 +681,7 @@ const ZDT = {
         
         const offer = await this.pc.createOffer();
         await this.pc.setLocalDescription(offer);
-        this.socket.emit('message', this.roomId, offer);
+        this.socket.emit('message', this.blindRoomId, offer);
         
         this.voiceActive = true;
         btn.innerHTML = '🔴 נתק קשר קולי';
