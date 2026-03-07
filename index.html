@@ -299,7 +299,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
   </div>
 
   <div class="stats-bar">
-    <div class="enc-tag">SECURE: AES-GCM + ECDH P-256 + Blind Routing + VoDC</div>
+    <div class="enc-tag">SECURE: AES-GCM + ECDH P-256 + Blind Routing + VoDC (iOS Ready)</div>
     <div class="util-row">
       <div>TX: <span style="color:var(--t2)" id="stat-sent">0 B</span></div>
       <div>RX: <span style="color:var(--t2)" id="stat-recv">0 B</span></div>
@@ -310,6 +310,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
 <script>
 // ────────────────────────────────────────────────────────
 // ZDT ARCHITECTURE - TACTICAL HARDENED EDITION
+// - Blind Routing (Zero-Knowledge Signaling)
+// - ECDH Key Exchange mixed with PSK (AES-256-GCM)
+// - Encrypted Replay-Proof Chat
+// - Voice over DataChannel (VoDC) with iOS Safari Patch
 // ────────────────────────────────────────────────────────
 const SIGNAL_URL  = 'https://zdt-signaling.onrender.com';
 const CHUNK_SIZE  = 16 * 1024; // 16 KB
@@ -321,6 +325,7 @@ const ICE_SERVERS = {
   ] 
 };
 
+// פונקציית ניתוב עיוור
 async function hashBlindRoom(room, psk) {
   const enc = new TextEncoder();
   const data = enc.encode(room + "|||ZDT_SALT|||" + psk);
@@ -345,7 +350,7 @@ const UI = {
   fileQueue: [], bytesSent: 0, bytesRecv: 0,
   
   // -- מנגנון התראות (Notifications) --
-  currentTab: 'chat', // ברירת מחדל החדשה
+  currentTab: 'chat', // ברירת מחדל 
   unreadChat: 0,
   unreadFiles: 0,
   unreadTitleCount: 0,
@@ -384,7 +389,6 @@ const UI = {
     if (name === 'chat') { this.unreadChat = 0; this.updateBadge('chat'); }
     if (name === 'files') { this.unreadFiles = 0; this.updateBadge('files'); }
   },
-  // ------------------------------------
 
   setConnState(state) {
     const map = {
@@ -485,7 +489,7 @@ const UI = {
     const msgs = document.getElementById('chat-msgs');
     msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight;
 
-    // הפעלת התראות אם ההודעה הגיעה מהצד השני
+    // התראות לצד העמית
     if (side === 'them') {
       if (!this.isFocused) {
         this.unreadTitleCount++;
@@ -509,7 +513,7 @@ const UI = {
     setTimeout(()=>URL.revokeObjectURL(url), 10000);
     LOG.add('ok','FILE',`נשמר: ${name}`);
 
-    // התראת קובץ חדש בלשונית (אם המשתמש לא נמצא בלשונית הקבצים)
+    // התראת קובץ
     if (this.currentTab !== 'files') {
       this.unreadFiles++;
       this.updateBadge('files');
@@ -522,9 +526,9 @@ const ZDT = {
   localDH: null, sharedKey: null, secure: false,
   isInitiator: false, joinTime: 0, rxMeta: null, rxChunks: [], rxReceived: 0,
   
-  // VoDC Variables
+  // VoDC Variables + iOS state
   localStream: null, voiceActive: false, mediaRecorder: null,
-  mediaSource: null, sourceBuffer: null, audioQueue: [],
+  mediaSource: null, sourceBuffer: null, audioQueue: [], isIOS: false,
 
   async connect(roomId, psk) {
     this.roomId = roomId;
@@ -641,8 +645,17 @@ const ZDT = {
     setTimeout(() => UI._refreshSendBtn(), 500);
   },
 
+  // 🛡️ מנוע קליטת אודיו מותאם iOS 
   _setupAudioReceiver() {
     this.audioQueue = [];
+    
+    if (typeof MediaSource === 'undefined') {
+      LOG.add('warn', 'SYS', 'מערכת iOS זוהתה. מנוע הקול עובר למצב תאימות.');
+      this.isIOS = true;
+      return; 
+    }
+    
+    this.isIOS = false;
     this.mediaSource = new MediaSource();
     const audioEl = document.getElementById('remote-audio');
     audioEl.src = URL.createObjectURL(this.mediaSource);
@@ -652,7 +665,7 @@ const ZDT = {
         this.sourceBuffer = this.mediaSource.addSourceBuffer('audio/webm; codecs="opus"');
         this.sourceBuffer.addEventListener('updateend', () => this._processAudioQueue());
       } catch (e) {
-        LOG.add('warn', 'VOICE', 'דפדפן זה אינו תומך בהזרמת קול מוצפנת (MediaSource Opus)');
+        LOG.add('warn', 'VOICE', 'דפדפן זה אינו תומך בהזרמת קול רציפה נטיבית');
       }
     });
   },
@@ -666,7 +679,6 @@ const ZDT = {
   },
 
   async _handleIncoming(data) {
-    // Text Control Layer
     if (typeof data === 'string') {
       const msg = JSON.parse(data);
       if (msg.type === 'dh') { await this._handleDHPub(msg.pub); return; }
@@ -688,8 +700,16 @@ const ZDT = {
       if (msg.type === 'voice') {
         try {
           const plain = await crypto.subtle.decrypt({ name:'AES-GCM', iv:new Uint8Array(msg.iv) }, this.sharedKey, new Uint8Array(msg.enc));
-          this.audioQueue.push(plain);
-          this._processAudioQueue();
+          
+          if (this.isIOS) {
+            // iOS Fallback: שימוש ב-Blob 
+            const blob = new Blob([plain], { type: msg.mime || 'audio/mp4' });
+            const audioChunk = new Audio(URL.createObjectURL(blob));
+            audioChunk.play().catch(e => { /* התעלמות מחסימות ניגון אוטומטי */ });
+          } else {
+            this.audioQueue.push(plain);
+            this._processAudioQueue();
+          }
         } catch(e) {
           LOG.add('err', 'VOICE', 'שגיאת פענוח קול');
         }
@@ -698,7 +718,6 @@ const ZDT = {
       return;
     }
     
-    // Binary File Layer
     this.rxChunks.push(data); this.rxReceived += data.byteLength;
     UI.showTxProg((this.rxReceived / this.rxMeta.size)*100, 0, this.rxReceived, this.rxMeta.size);
     UI.updateStats({ recv: data.byteLength });
@@ -762,10 +781,14 @@ const ZDT = {
     
     if (!this.voiceActive) {
       try {
-        LOG.add('info', 'VOICE', 'מחמש מיקרופון - הצפנת קצה מלאה פעילה');
+        LOG.add('info', 'VOICE', 'מחמש מיקרופון - מחפש מקודד נתמך...');
         this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         
-        this.mediaRecorder = new MediaRecorder(this.localStream, { mimeType: 'audio/webm;codecs=opus' });
+        // בחירה דינמית של מקודד (לאייפון או למחשב/אנדרואיד)
+        const mimeTypes = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/mpeg'];
+        let selectedMime = mimeTypes.find(mime => MediaRecorder.isTypeSupported(mime)) || '';
+        
+        this.mediaRecorder = new MediaRecorder(this.localStream, selectedMime ? { mimeType: selectedMime } : undefined);
         
         this.mediaRecorder.ondataavailable = async (e) => {
           if (e.data.size > 0 && this.secure && this.dc.readyState === 'open') {
@@ -775,6 +798,7 @@ const ZDT = {
             
             this.dc.send(JSON.stringify({ 
               type: 'voice', 
+              mime: selectedMime,
               enc: Array.from(new Uint8Array(enc)), 
               iv: Array.from(iv) 
             }));
@@ -788,7 +812,7 @@ const ZDT = {
         btn.innerHTML = '🔴 נתק קשר קולי';
         btn.style.borderColor = 'var(--red)';
         btn.style.color = 'var(--red)';
-        LOG.add('ok', 'VOICE', 'משדר קול מוצפן AES-256-GCM ע"ג DataChannel');
+        LOG.add('ok', 'VOICE', `משדר קול מוצפן [${selectedMime || 'Native'}] ע"ג ערוץ הנתונים`);
       } catch(e) {
         LOG.add('err', 'VOICE', 'גישה למיקרופון נדחתה או שגיאת MediaRecorder');
       }
@@ -825,6 +849,3 @@ function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 </script>
 </body>
 </html>
-
-```
-
