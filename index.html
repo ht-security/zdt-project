@@ -1,3 +1,10 @@
+הבנתי אותך. חיווי (Badge) על גבי הלשוניות עצמן בתוך הממשק (כמו בווטסאפ או טלגרם) הוא אכן שיפור משמעותי לחוויית המשתמש, כך שתדע בדיוק באיזו לשונית מחכה לך מידע חדש מבלי לעבור ביניהן סתם.
+
+הוספתי מונה הודעות אדום ובולט לכל אחת מהלשוניות (צ'אט וקבצים). המונה יעלה כאשר יתקבל מידע בזמן שאתה נמצא בלשונית השנייה, ויתאפס אוטומטית ברגע שתלחץ על הלשונית הרלוונטית. בנוסף, הגדרתי את ה"צ'אט סודי" כלשונית הפתוחה כברירת מחדל בעליית המערכת.
+
+הנה הקוד המלא והמעודכן הכולל את כל ההקשחות הקריפטוגרפיות מהשלב הקודם, יחד עם שיפורי הממשק החדשים:
+
+```html
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
@@ -115,6 +122,21 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
 .tab-pane{display:none;flex:1;flex-direction:column;min-height:0}
 .tab-pane.active{display:flex}
 
+/* Notification Badge */
+.tab-badge {
+  background: var(--red);
+  color: #fff;
+  border-radius: 12px;
+  padding: 1px 6px;
+  font-size: 0.65rem;
+  font-family: var(--mono);
+  font-weight: bold;
+  margin-right: 6px;
+  box-shadow: 0 0 6px rgba(255, 51, 102, 0.5);
+  animation: badge-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+@keyframes badge-pop { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+
 /* Files UI */
 .files-body{padding:16px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;flex:1}
 .dropzone{border:1.5px dashed rgba(0,212,255,0.2);border-radius:var(--r);padding:32px 16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer;position:relative;transition:all var(--tr);background:rgba(0,212,255,0.015);min-height:140px;text-align:center;}
@@ -228,11 +250,22 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
       </div>
 
       <div class="tabs-bar">
-        <button class="tab-btn active" onclick="UI.switchTab('files', this)">📁 העברת נתונים</button>
-        <button class="tab-btn" onclick="UI.switchTab('chat', this)">💬 צ'אט סודי</button>
+        <button class="tab-btn active" onclick="UI.switchTab('chat', this)">💬 צ'אט סודי <span id="badge-chat" class="tab-badge hidden">0</span></button>
+        <button class="tab-btn" onclick="UI.switchTab('files', this)">📁 העברת נתונים <span id="badge-files" class="tab-badge hidden">0</span></button>
       </div>
 
-      <div class="tab-pane active" id="tab-files">
+      <div class="tab-pane active" id="tab-chat">
+        <div class="chat-pane">
+          <div style="text-align:center;padding:10px;font-size:0.7rem;color:var(--t3);border-bottom:1px solid var(--line2);">🔒 ערוץ מוצפן קצה-לקצה · חסין Replay Attack</div>
+          <div class="chat-msgs" id="chat-msgs"></div>
+          <div class="chat-input-row">
+            <textarea id="chat-input" class="chat-textarea" placeholder="הקלד הודעה מוצפנת..." onkeydown="UI.chatKey(event)"></textarea>
+            <button id="btn-chat-send" class="btn-send-chat" disabled onclick="ZDT.triggerChat()">➤</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane" id="tab-files">
         <div class="files-body">
           <div class="dropzone" id="dropzone" ondragover="UI.doDragOver(event)" ondragleave="UI.doDragLeave(event)" ondrop="UI.doFileDrop(event)">
             <input type="file" multiple class="dz-input" id="file-input" onchange="UI.fileSelect(this)"/>
@@ -261,17 +294,6 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
           <button class="btn btn-green" id="btn-send" disabled onclick="ZDT.triggerSend()">🚀 שדר נתונים</button>
         </div>
       </div>
-
-      <div class="tab-pane" id="tab-chat">
-        <div class="chat-pane">
-          <div style="text-align:center;padding:10px;font-size:0.7rem;color:var(--t3);border-bottom:1px solid var(--line2);">🔒 ערוץ מוצפן קצה-לקצה · חסין Replay Attack</div>
-          <div class="chat-msgs" id="chat-msgs"></div>
-          <div class="chat-input-row">
-            <textarea id="chat-input" class="chat-textarea" placeholder="הקלד הודעה מוצפנת..." onkeydown="UI.chatKey(event)"></textarea>
-            <button id="btn-chat-send" class="btn-send-chat" disabled onclick="ZDT.triggerChat()">➤</button>
-          </div>
-        </div>
-      </div>
     </div>
 
     <div class="panel">
@@ -295,16 +317,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
 <script>
 // ────────────────────────────────────────────────────────
 // ZDT ARCHITECTURE - TACTICAL HARDENED EDITION
-// - Blind Routing (Zero-Knowledge Signaling)
-// - ECDH Key Exchange mixed with PSK (AES-256-GCM)
-// - Encrypted Replay-Proof Chat
-// - Voice over DataChannel (VoDC) - bypassing WebRTC SRTP flaws
 // ────────────────────────────────────────────────────────
 const SIGNAL_URL  = 'https://zdt-signaling.onrender.com';
 const CHUNK_SIZE  = 16 * 1024; // 16 KB
 
-// הערה מבצעית: שרתי STUN של גוגל מאפשרים חיבור אך מדליפים את מיקומך למפעיל השרת.
-// למערכת טהורה באמת בארגון צבאי/ביטחוני יש להחליף ל-TURN פרטי ולהגדיר iceTransportPolicy: 'relay'
 const ICE_SERVERS = { 
   iceServers:[
     { urls: 'stun:stun.l.google.com:19302' },
@@ -312,7 +328,6 @@ const ICE_SERVERS = {
   ] 
 };
 
-// פונקציית ניתוב עיוור - השרת לעולם לא מכיר את שם החדר או הסיסמה
 async function hashBlindRoom(room, psk) {
   const enc = new TextEncoder();
   const data = enc.encode(room + "|||ZDT_SALT|||" + psk);
@@ -335,6 +350,48 @@ const LOG = {
 
 const UI = {
   fileQueue: [], bytesSent: 0, bytesRecv: 0,
+  
+  // -- מנגנון התראות (Notifications) --
+  currentTab: 'chat', // ברירת מחדל החדשה
+  unreadChat: 0,
+  unreadFiles: 0,
+  unreadTitleCount: 0,
+  isFocused: true,
+  originalTitle: document.title,
+
+  initNotifications() {
+    window.addEventListener('focus', () => {
+      this.isFocused = true;
+      this.unreadTitleCount = 0;
+      document.title = this.originalTitle;
+    });
+    window.addEventListener('blur', () => {
+      this.isFocused = false;
+    });
+  },
+
+  updateBadge(name) {
+    const badge = document.getElementById('badge-' + name);
+    const count = name === 'chat' ? this.unreadChat : this.unreadFiles;
+    if (count > 0) {
+      badge.textContent = count;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  },
+
+  switchTab(name, btn) {
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active'); document.getElementById('tab-'+name).classList.add('active');
+    
+    // איפוס מונים במעבר לשונית
+    this.currentTab = name;
+    if (name === 'chat') { this.unreadChat = 0; this.updateBadge('chat'); }
+    if (name === 'files') { this.unreadFiles = 0; this.updateBadge('files'); }
+  },
+  // ------------------------------------
 
   setConnState(state) {
     const map = {
@@ -434,12 +491,18 @@ const UI = {
     d.innerHTML=`<div class="msg-bubble">${esc(text)}</div><div class="msg-time">${ts}</div>`;
     const msgs = document.getElementById('chat-msgs');
     msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight;
-  },
 
-  switchTab(name, btn) {
-    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-    document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
-    btn.classList.add('active'); document.getElementById('tab-'+name).classList.add('active');
+    // הפעלת התראות אם ההודעה הגיעה מהצד השני
+    if (side === 'them') {
+      if (!this.isFocused) {
+        this.unreadTitleCount++;
+        document.title = `(${this.unreadTitleCount}) 💬 הודעה חדשה!`;
+      }
+      if (this.currentTab !== 'chat') {
+        this.unreadChat++;
+        this.updateBadge('chat');
+      }
+    }
   },
 
   updateStats({sent,recv}={}) {
@@ -452,6 +515,12 @@ const UI = {
     const a = document.createElement('a'); a.href = url; a.download = name; a.click();
     setTimeout(()=>URL.revokeObjectURL(url), 10000);
     LOG.add('ok','FILE',`נשמר: ${name}`);
+
+    // התראת קובץ חדש בלשונית (אם המשתמש לא נמצא בלשונית הקבצים)
+    if (this.currentTab !== 'files') {
+      this.unreadFiles++;
+      this.updateBadge('files');
+    }
   }
 };
 
@@ -536,8 +605,6 @@ const ZDT = {
     };
     this.pc.ondatachannel = ({ channel }) => { this._attachDC(channel); };
     
-    // VoDC replaces standard WebRTC Audio mapping.
-    
     LOG.add('crypto','SEC','Generating ECDH Keys...');
     this.localDH = await crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveKey','deriveBits']);
   },
@@ -601,7 +668,7 @@ const ZDT = {
     if (this.sourceBuffer && !this.sourceBuffer.updating && this.audioQueue.length > 0) {
       try {
         this.sourceBuffer.appendBuffer(this.audioQueue.shift());
-      } catch(e) { /* ignore chunk format errors dynamically */ }
+      } catch(e) { }
     }
   },
 
@@ -757,7 +824,13 @@ function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 function fmtBytes(n){ if(!n||n===0) return '0 B'; const k=1024,u=['B','KB','MB','GB'],i=Math.floor(Math.log(n)/Math.log(k)); return (n/Math.pow(k,i)).toFixed(i?1:0)+' '+u[i]; }
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
-(function init(){ LOG.add('info','SYS','Terminal Booting... E2EE Ready.'); UI.setLocked(true); })();
+(function init(){ 
+  LOG.add('info','SYS','Terminal Booting... E2EE Ready.'); 
+  UI.setLocked(true); 
+  UI.initNotifications(); 
+})();
 </script>
 </body>
 </html>
+
+```
